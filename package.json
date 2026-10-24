@@ -1,0 +1,35 @@
+{
+  "name": "jarvis-sascha",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Persönliches Betriebssystem für Sascha – Umzug Mainz → Dubai und danach. Deutsch zuerst, mobil zuerst.",
+  "type": "module",
+  "engines": { "node": ">=22" },
+  "scripts": {
+    "test": "npm run test:unit && npm run test:db && npm run test:parity",
+    "test:unit": "tsx --test tests/unit/*.test.ts",
+    "test:db": "bash scripts/db-test.sh",
+    "test:parity": "tsx scripts/check-transition-parity.ts",
+    "typecheck": "tsc -p tsconfig.json",
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start"
+  },
+  "dependencies": {
+    "@supabase/ssr": "0.6.1",
+    "@supabase/supabase-js": "2.50.0",
+    "next": "15.3.3",
+    "react": "19.1.0",
+    "react-dom": "19.1.0",
+    "zod": "3.25.67"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.53.0",
+    "@tailwindcss/postcss": "4.1.10",
+    "@types/node": "22.15.30",
+    "@types/react": "19.1.8",
+    "tailwindcss": "4.1.10",
+    "tsx": "4.20.3",
+    "typescript": "5.8.3"
+  }
+}

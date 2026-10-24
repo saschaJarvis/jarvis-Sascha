@@ -1,0 +1,37 @@
+name: CI
+on:
+  push: { branches: [main] }
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_HOST_AUTH_METHOD: trust
+        ports: ['5432:5432']
+        options: >-
+          --health-cmd "pg_isready -U postgres" --health-interval 5s --health-timeout 5s --health-retries 10
+    env:
+      PGHOST: localhost
+      PGPORT: 5432
+      PGUSER: postgres
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22 }
+      - run: sudo apt-get update && sudo apt-get install -y postgresql-client
+      - run: npm install   # auf npm ci umstellen, sobald package-lock.json eingecheckt ist
+      - run: npm run typecheck
+      - run: npm run test:unit
+      - run: npm run test:db
+      - run: npm run test:parity
+      - name: Keine Geheimnisse im Repo
+        run: |
+          ! git grep -nE '(sk_live|sk-ant-|eyJhbGciOi|-----BEGIN (RSA|EC|OPENSSH) PRIVATE KEY)' -- ':!*.md' ':!.env.example' ':!.github/workflows/ci.yml'
