@@ -14,7 +14,9 @@
 - [x] Playwright-E2E (2 Abläufe, iPhone-Viewport) + Bildschirmfotos in docs/screens
 
 ## Als Nächstes
-- [ ] (Sascha) Supabase-Projekt (EU) + Vercel anlegen → Supabase Auth anbinden, App online stellen
+- [x] Supabase-Projekt angelegt, Migrationen 0001–0007 live, Supabase Auth + Storage angebunden
+- [ ] (Sascha) Vercel-Projekt + DATABASE_URL + Site URL in Supabase (docs/DEPLOYMENT.md)
+- [ ] Nach Saschas Registrierung: Registrierung schließen
 - [ ] Erinnerungs-Worker (Cron) + Resend (nur an dich selbst)
 - [ ] Finanz-Cockpit-Ansicht + Kontoauszug-Import in der App
 - [ ] Echter Virenscanner (ClamAV-Worker)

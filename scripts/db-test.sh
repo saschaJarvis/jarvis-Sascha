@@ -24,7 +24,7 @@ for f in supabase/tests/1*.sql; do
 done
 
 echo "→ Demo-Seed laden (frischer Nutzer)"
-"${PSQL[@]}" -c "insert into auth.users (id, email) values ('00000000-0000-4000-a000-0000000000dd','seed@example.invalid'); insert into public.profiles (id) values ('00000000-0000-4000-a000-0000000000dd');" >/dev/null
+"${PSQL[@]}" -c "insert into auth.users (id, email) values ('00000000-0000-4000-a000-0000000000dd','seed@example.invalid'); insert into public.profiles (id) values ('00000000-0000-4000-a000-0000000000dd') on conflict do nothing;" >/dev/null
 "${PSQL[@]}" -v uid="'00000000-0000-4000-a000-0000000000dd'" -f seed/demo.sql >/dev/null
 "${PSQL[@]}" -v uid="'00000000-0000-4000-a000-0000000000dd'" -f seed/demo.sql >/dev/null   # idempotent
 "${PSQL[@]}" -c "select test.ok('seed: 6 Beispielaufgaben, idempotent', (select count(*) from public.tasks where user_id = '00000000-0000-4000-a000-0000000000dd') = 6)" >/dev/null

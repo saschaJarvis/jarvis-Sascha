@@ -6,7 +6,9 @@
 
 -- Setup als Superuser (entspricht Supabase Auth)
 insert into auth.users (id, email) values (:A, 'demo-a@example.invalid'), (:B, 'demo-b@example.invalid');
-insert into public.profiles (id, display_name) values (:A, 'Demo A'), (:B, 'Demo B');
+update public.profiles set display_name = 'Demo A' where id = :A;
+update public.profiles set display_name = 'Demo B' where id = :B;
+select test.ok('signup: Profil automatisch angelegt', (select count(*) from public.profiles where id in (:A, :B)) = 2);
 
 -- ===========================================================================
 -- 1. RLS-Isolation
@@ -223,7 +225,7 @@ insert into public.documents (id, user_id, title, folder, state) values
   ('20000000-0000-4000-a000-000000000002', :A, 'Kontoauszug Juni', 'banks', 'requested');
 insert into public.upload_requests (user_id, document_id, requested_item, reason, token_hash, expires_at) values
   (:A, '20000000-0000-4000-a000-000000000002', 'Kontoauszug Juni', 'Abgleich Mietzahlung',
-   encode(digest('gueltiger-token', 'sha256'), 'hex'), now() + interval '2 days');
+   encode(extensions.digest('gueltiger-token', 'sha256'), 'hex'), now() + interval '2 days');
 select test.throws('upload: Nutzer kann Token nicht selbst einlösen', $$select * from app.redeem_upload_token('gueltiger-token')$$, '%permission denied%');
 select test.throws('upload: Link max. 7 Tage gültig',
   $$insert into public.upload_requests (user_id, document_id, requested_item, reason, token_hash, expires_at) values
@@ -231,7 +233,7 @@ select test.throws('upload: Link max. 7 Tage gültig',
 reset role;
 -- abgelaufener Link (als Superuser zurückdatiert, um Zeitablauf zu simulieren)
 insert into public.upload_requests (user_id, document_id, requested_item, reason, token_hash, expires_at, created_at) values
-  (:A, '20000000-0000-4000-a000-000000000002', 'x', 'y', encode(digest('alter-token', 'sha256'), 'hex'), now() - interval '1 hour', now() - interval '2 days');
+  (:A, '20000000-0000-4000-a000-000000000002', 'x', 'y', encode(extensions.digest('alter-token', 'sha256'), 'hex'), now() - interval '1 hour', now() - interval '2 days');
 set role service_role;
 select test.lives('upload: gültiger Token einlösbar', $$select * from app.redeem_upload_token('gueltiger-token')$$);
 select test.throws('upload: Token nur einmal', $$select * from app.redeem_upload_token('gueltiger-token')$$, '%bereits benutzt%');

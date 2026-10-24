@@ -36,6 +36,7 @@ jobs:
         env:
           DATABASE_URL: postgres://postgres@localhost:5432/jarvis_dev
           ALLOW_SIGNUP: 'true'
+          AUTH_PROVIDER: local
         run: |
           export AUTH_SECRET=$(openssl rand -base64 48)
           bash scripts/db-local.sh --reset

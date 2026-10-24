@@ -9,7 +9,8 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
   if (!/^[0-9a-f-]{36}$/.test(id)) return new NextResponse('Nicht gefunden', { status: 404 });
   const f = await readVersion(s, id);
   if (!f) return new NextResponse('Nicht gefunden oder noch nicht geprüft', { status: 404 });
-  return new NextResponse(new Uint8Array(f.buf), {
+  if (f.url) return NextResponse.redirect(f.url, { headers: { 'Cache-Control': 'private, no-store' } });
+  return new NextResponse(new Uint8Array(f.buf!), {
     headers: {
       'Content-Type': f.mime,
       'Content-Disposition': `inline; filename*=UTF-8''${encodeURIComponent(f.name)}`,

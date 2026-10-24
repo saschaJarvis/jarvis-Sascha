@@ -2,7 +2,7 @@
 
 Persönliches Betriebssystem für Sascha: Umzug Mainz → Dubai als erstes Projekt, danach dauerhafter „Chief of Staff" für Fristen, Rechnungen, Verträge, Dokumente und Alltag. Deutsch zuerst, mobil zuerst, **eine** nächste Handlung statt Listenflut. Jarvis bereitet vor – Sascha gibt frei.
 
-> **Stand 24.10.2026 (Abend):** App läuft lokal auf dem iPhone-Viewport – Anmeldung mit Authenticator, Einrichtung, Heute-Screen, Aufgaben mit Nachweisen, Dokumente, Beispiel-Kündigung von Anfang bis Ende. Noch **nicht** online: dafür fehlen Supabase- und Vercel-Konto (siehe `docs/ACCESS_CHECKLIST.md`).
+> **Stand 24.10.2026 (Abend):** App läuft lokal auf dem iPhone-Viewport – Anmeldung mit Authenticator, Einrichtung, Heute-Screen, Aufgaben mit Nachweisen, Dokumente, Beispiel-Kündigung von Anfang bis Ende. Supabase ist eingerichtet; zum Online-Gang fehlt nur noch das Vercel-Projekt (siehe `docs/DEPLOYMENT.md`).
 
 ## Schnellstart (lokal)
 Voraussetzungen: Node ≥ 22, PostgreSQL 16.
@@ -42,7 +42,8 @@ Legende: **TESTED** = gebaut und automatisch getestet · **IMPLEMENTED** = gebau
 | Sicherheit | Upload-Links: gehasht, ≤ 7 Tage, einmalig, nur serverseitig einlösbar | TESTED |
 | Sicherheit | Schutz gegen Seeds/Private Keys in Wallet-Feldern | TESTED |
 | Sicherheit | Login + TOTP-Einrichtung per QR, Code-Pflicht, Replay-Schutz, Sperre nach 5 Fehlversuchen (lokal) | TESTED (Unit + E2E) |
-| Sicherheit | Supabase Auth statt lokaler Anmeldung | BLOCKED (Supabase-Konto) |
+| Sicherheit | Supabase Auth (E-Mail-Bestätigung, TOTP-Faktor, aal2, Step-up über amr) | IMPLEMENTED – erster Live-Test bei Saschas Registrierung |
+| Datenbank | Supabase-Projekt (EU, eu-west-1): Migrationen 0001–0007, Live-Rauchtest RLS/MFA, Security Advisor ohne Befund | TESTED (live) |
 | Sicherheit | Passkeys | PLANNED |
 | Sicherheit | Sicherheits-Header (CSP, frame-ancestors, nosniff) | IMPLEMENTED |
 | Sicherheit | Virenscan | MOCKED (Entwicklungs-Scanner: EICAR + aktive PDF-Inhalte; E2E-getestet) – echter Scanner PLANNED |
@@ -55,7 +56,7 @@ Legende: **TESTED** = gebaut und automatisch getestet · **IMPLEMENTED** = gebau
 | Assistent | Feste Fragen („Was muss ich heute machen?“, „Was vergesse ich?“) aus eigenen Daten | IMPLEMENTED |
 | Dokumente | Schema, Ordner, Zustände, Versionen, Dubletten-Hash, MIME-Allowlist | TESTED |
 | Dokumente | Upload, Typprüfung an Dateibytes, Dubletten-Hinweis, Ordner, Suche, Download nur nach RLS + Scan | TESTED (E2E, lokale Ablage) |
-| Dokumente | Privater Supabase-Bucket mit signierten URLs | BLOCKED (Supabase-Konto) |
+| Dokumente | Privater Supabase-Bucket `vault` mit 60-s-Links | IMPLEMENTED (Bucket + Policies live angelegt) |
 | Kündigungen | Pipeline mit hashgebundener Freigabe, Doppelversandschutz, Abschluss-Checkliste | TESTED |
 | Kündigungen | Demo „Büromietvertrag Mainz": leere Unbekannte, Entwurf, Prüfpunkte, Häkchen, Step-up, Vorschau, Senden (simuliert), Beleg, Zugang, Bestätigung, Abschluss-Checkliste | TESTED (DB + E2E) |
 | Kündigungen | Echter Vorgang: Brief zum Drucken, selbst verschickt, Versand verbuchen, Folgeaufgabe Auslieferungsbeleg | IMPLEMENTED |

@@ -138,7 +138,7 @@ begin
   end if;
 
   v_hash := case when new.draft_body is null then null
-            else encode(digest(coalesce(new.draft_subject, '') || E'\n\n' || new.draft_body, 'sha256'), 'hex') end;
+            else encode(extensions.digest(coalesce(new.draft_subject, '') || E'\n\n' || new.draft_body, 'sha256'), 'hex') end;
 
   if tg_op = 'INSERT' then
     if new.status not in ('DETECTED', 'TERMS_REVIEW', 'DRAFT') then

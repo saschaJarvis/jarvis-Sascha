@@ -319,7 +319,7 @@ declare
   r public.upload_requests;
 begin
   update public.upload_requests u set used_at = now()
-   where u.token_hash = encode(digest(p_token, 'sha256'), 'hex')
+   where u.token_hash = encode(extensions.digest(p_token, 'sha256'), 'hex')
      and u.used_at is null and u.expires_at > now()
   returning * into r;
   if r.id is null then

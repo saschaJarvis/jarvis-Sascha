@@ -9,9 +9,15 @@ import { Pool, PoolClient } from 'pg';
  */
 
 const g = globalThis as unknown as { __jarvisPool?: Pool };
+// sslmode aus der URL entfernen: TLS wird unten explizit konfiguriert (Supabase-Pooler nutzt eigene CA)
+const rawUrl = process.env.DATABASE_URL ?? process.env.POSTGRES_URL ?? 'postgres://postgres@localhost/jarvis_dev?host=/tmp&port=54322';
+const dbUrl = rawUrl.replace(/([?&])sslmode=[^&]*&?/, '$1').replace(/[?&]$/, '');
+const remote = /supabase\.(co|com)/.test(dbUrl);
 export const pool: Pool = g.__jarvisPool ?? new Pool({
-  connectionString: process.env.DATABASE_URL ?? 'postgres://postgres@localhost/jarvis_dev?host=/tmp&port=54322',
-  max: 10,
+  connectionString: dbUrl,
+  // Verschlüsselt; Zertifikatsprüfung gegen die Supabase-CA, falls SUPABASE_DB_CA (PEM) gesetzt ist
+  ssl: remote ? (process.env.SUPABASE_DB_CA ? { ca: process.env.SUPABASE_DB_CA } : { rejectUnauthorized: false }) : undefined,
+  max: process.env.VERCEL ? 3 : 10,
 });
 if (process.env.NODE_ENV !== 'production') g.__jarvisPool = pool;
 

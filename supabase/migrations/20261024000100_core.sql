@@ -2,7 +2,10 @@
 -- Profile, Einwilligungen, Audit-Log (append-only, Hash-Kette), Hilfsfunktionen, MFA-Gate.
 -- Annahmen: läuft in Supabase (auth.uid(), auth.jwt(), Rollen authenticated/service_role existieren).
 
-create extension if not exists pgcrypto;
+-- Supabase legt Erweiterungen im Schema "extensions" ab; lokal genauso, damit Aufrufe identisch sind.
+create schema if not exists extensions;
+create extension if not exists pgcrypto with schema extensions;
+grant usage on schema extensions to authenticated, service_role;
 
 create schema if not exists app;
 revoke all on schema app from public;
@@ -133,7 +136,7 @@ begin
    where user_id = new.user_id order by seq desc limit 1;
   new.prev_hash := coalesce(v_prev, 'GENESIS');
   new.created_at := clock_timestamp();
-  new.hash := encode(digest(app.audit_hash_input(new.user_id, new.actor, new.action, new.entity,
+  new.hash := encode(extensions.digest(app.audit_hash_input(new.user_id, new.actor, new.action, new.entity,
                        new.entity_id, new.payload, new.created_at, new.prev_hash), 'sha256'), 'hex');
   return new;
 end $$;
@@ -170,7 +173,7 @@ begin
     raise exception 'nicht erlaubt' using errcode = 'insufficient_privilege';
   end if;
   for r in select * from public.audit_events where user_id = p_user order by seq loop
-    if r.prev_hash <> v_prev or r.hash <> encode(digest(app.audit_hash_input(r.user_id, r.actor, r.action,
+    if r.prev_hash <> v_prev or r.hash <> encode(extensions.digest(app.audit_hash_input(r.user_id, r.actor, r.action,
         r.entity, r.entity_id, r.payload, r.created_at, r.prev_hash), 'sha256'), 'hex') then
       return r.seq;
     end if;

@@ -1,6 +1,8 @@
 'use server';
 import { redirect } from 'next/navigation';
-import { signIn, signOut, signUp, verifyTotpForSession } from '@/server/auth';
+import QRCode from 'qrcode';
+import { beginTotpEnrollment, getSession, signIn, signOut, signUp, verifyTotpForSession } from '@/server/auth';
+import { otpauthUri } from '@/lib/totp';
 
 export type FormState = { error?: string } | undefined;
 
@@ -31,11 +33,25 @@ export async function signupAction(_: FormState, fd: FormData): Promise<FormStat
 
 export async function totpAction(_: FormState, fd: FormData): Promise<FormState> {
   try {
-    await verifyTotpForSession(String(fd.get('code') ?? ''));
+    const factorId = String(fd.get('factor_id') ?? '') || undefined;
+    await verifyTotpForSession(String(fd.get('code') ?? ''), factorId);
   } catch (e) {
     return { error: (e as Error).message };
   }
   redirect(safeNext(fd.get('next')));
+}
+
+export async function startEnrollmentAction(): Promise<{ secret?: string; factorId?: string; uri?: string; qr?: string; error?: string }> {
+  const s = await getSession();
+  if (!s) return { error: 'Bitte erneut anmelden.' };
+  try {
+    const e = await beginTotpEnrollment(s);
+    const uri = e.uri ?? otpauthUri(e.secret, s.email);
+    const qr = await QRCode.toDataURL(uri, { margin: 1, width: 240 });
+    return { secret: e.secret, factorId: e.factorId, uri, qr };
+  } catch (err) {
+    return { error: (err as Error).message };
+  }
 }
 
 export async function logoutAction(): Promise<void> {

@@ -4,7 +4,8 @@ import path from 'node:path';
 import { sha256Hex } from './crypto';
 import { withService } from './db';
 import { db } from './repo';
-import type { Session } from './auth';
+import { usingSupabase, type Session } from './auth';
+import { supabaseUser } from './supabase';
 
 /**
  * Private Dateiablage. Lokal: Verzeichnis STORAGE_DIR (außerhalb von public/). In Produktion: privater
@@ -12,7 +13,8 @@ import type { Session } from './auth';
  * Der Dateityp wird an den ersten Bytes erkannt – die Angabe des Browsers wird nicht geglaubt.
  */
 
-const MAX_BYTES = 20 * 1024 * 1024;
+// Vercel-Funktionen nehmen max. ~4,5 MB pro Anfrage an; lokal sind 20 MB möglich.
+const MAX_BYTES = () => (usingSupabase() ? 4 : 20) * 1024 * 1024;
 const root = () => path.resolve(/* turbopackIgnore: true */ process.cwd(), process.env.STORAGE_DIR ?? '.storage');
 
 export const FOLDERS = ['identity', 'housing', 'office', 'storage', 'business', 'taxes', 'banks', 'crypto', 'insurance',
@@ -54,7 +56,7 @@ export function devScan(buf: Buffer, mime: string): 'clean' | 'infected' {
 }
 
 export async function storeUpload(s: Session, file: File, meta: { title: string; folder: Folder; documentId?: string; tags?: string[] }) {
-  if (file.size > MAX_BYTES) throw new Error('Datei ist zu groß (max. 20 MB).');
+  if (file.size > MAX_BYTES()) throw new Error(`Datei ist zu groß (max. ${MAX_BYTES() / 1024 / 1024} MB).`);
   const buf = Buffer.from(await file.arrayBuffer());
   const sniff = sniffMime(buf, file.name);
   if (!sniff) throw new Error('Datei-Typ nicht erlaubt. Erlaubt: PDF, Foto (JPG/PNG/HEIC), CSV, XLSX, E-Mail (.eml).');
@@ -78,9 +80,7 @@ export async function storeUpload(s: Session, file: File, meta: { title: string;
     const v = await q<{ id: string }>(
       `insert into document_versions (document_id, user_id, version_no, storage_path, sha256, size_bytes, mime_type)
        values ($1, auth.uid(), $2, $3, $4, $5, $6) returning id`, [docId, versionNo, storagePath, sha, buf.length, sniff.mime]);
-    const abs = path.join(/* turbopackIgnore: true */ root(), storagePath);
-    await mkdir(path.dirname(abs), { recursive: true, mode: 0o700 });
-    await writeFile(abs, buf, { mode: 0o600 });
+    await putBlob(storagePath, buf, sniff.mime);
     return { documentId: docId, versionId: v[0].id, versionNo, duplicateOf: dup[0]?.title ?? null };
   });
 
@@ -89,13 +89,33 @@ export async function storeUpload(s: Session, file: File, meta: { title: string;
   return { documentId, versionId, versionNo, scan, duplicateOf, mime: sniff.mime };
 }
 
-/** Datei lesen – nur nachdem RLS bestätigt hat, dass die Version dem Nutzer gehört. */
-export async function readVersion(s: Session, versionId: string): Promise<{ buf: Buffer; mime: string; name: string } | null> {
+async function putBlob(storagePath: string, buf: Buffer, mime: string): Promise<void> {
+  if (usingSupabase()) {
+    // Upload im Namen des Nutzers: Storage-Policy prüft Ordner = eigene user_id und aal2
+    const sb = await supabaseUser();
+    const { error } = await sb.storage.from('vault').upload(storagePath, buf, { contentType: mime, upsert: false });
+    if (error) throw new Error(`Datei konnte nicht gespeichert werden: ${error.message}`);
+    return;
+  }
+  const abs = path.join(/* turbopackIgnore: true */ root(), storagePath);
+  await mkdir(path.dirname(abs), { recursive: true, mode: 0o700 });
+  await writeFile(abs, buf, { mode: 0o600 });
+}
+
+/** Datei lesen – nur nachdem RLS bestätigt hat, dass die Version dem Nutzer gehört.
+ *  Supabase: kurzlebige signierte URL (60 s) statt Dateiinhalt. */
+export async function readVersion(s: Session, versionId: string): Promise<{ buf?: Buffer; url?: string; mime: string; name: string } | null> {
   const rows = await db(s).run((q) => q<{ storage_path: string; mime_type: string; scan_status: string; title: string }>(
     `select v.storage_path, v.mime_type, v.scan_status::text as scan_status, d.title
        from document_versions v join documents d on d.id = v.document_id where v.id = $1`, [versionId]));
   const r = rows[0];
   if (!r || r.scan_status !== 'clean') return null;
+  if (usingSupabase()) {
+    const sb = await supabaseUser();
+    const { data, error } = await sb.storage.from('vault').createSignedUrl(r.storage_path, 60);
+    if (error || !data) return null;
+    return { url: data.signedUrl, mime: r.mime_type, name: r.title };
+  }
   const abs = path.join(/* turbopackIgnore: true */ root(), r.storage_path);
   if (!abs.startsWith(root() + path.sep)) return null;
   return { buf: await readFile(abs), mime: r.mime_type, name: `${r.title}.${r.storage_path.split('.').pop()}` };
