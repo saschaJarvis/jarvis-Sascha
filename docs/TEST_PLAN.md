@@ -1,6 +1,6 @@
 # TEST_PLAN
 
-Befehl für alles: `npm test` (Unit + DB/RLS + Parität). Stand 24.10.2026: **43 Unit-Tests, 73 DB-Tests, 2 Paritätsprüfungen – alle grün.**
+Befehl für alles: `npm test` (Unit + DB/RLS + Parität). Stand 24.10.2026: **46 Unit-Tests, 73 DB-Tests, 2 Paritätsprüfungen, 2 E2E-Abläufe – alle grün.**
 
 ## Ebenen
 | Ebene | Werkzeug | Ort |
@@ -9,7 +9,7 @@ Befehl für alles: `npm test` (Unit + DB/RLS + Parität). Stand 24.10.2026: **43
 | DB / RLS / Workflows | echtes Postgres 16 + Supabase-Stub, SQL-Assertions | `supabase/tests/`, `scripts/db-test.sh` |
 | Parität TS ↔ SQL | Skript vergleicht Übergangstabellen | `scripts/check-transition-parity.ts` |
 | Integration (OAuth, Resend, Webhooks, Upload-Links über HTTP) | Vitest/Playwright gegen Supabase lokal | offen |
-| E2E (Onboarding, MFA, Kündigungsfreigabe, Nachweis-Upload, Aufgabe erledigen) | Playwright, iPhone-Viewport | offen |
+| E2E (Onboarding, MFA inkl. falscher Code/Replay, Kündigungsfreigabe, Nachweis-Upload inkl. Virus/falscher Typ, Aufgabe erledigen, fremder Nutzer → 404, Pause) | Playwright, iPhone-Viewport | `tests/e2e/flows.spec.ts` ✅ |
 
 ## Abdeckung der Briefing-Anforderungen
 | Anforderung | Test | Status |
@@ -26,7 +26,7 @@ Befehl für alles: `npm test` (Unit + DB/RLS + Parität). Stand 24.10.2026: **43
 | Audit-Integrität (unveränderlich, Manipulation erkannt) | DB 5. | ✅ |
 | Datenexport nur eigene Daten, Step-up | DB 6. | ✅ |
 | Keine Seeds/Private Keys | DB 6. | ✅ |
-| Demo-Kündigung „Büromietvertrag Mainz": leer bleibende Unbekannte, Freigabe, Step-up, simulierter Versand, Abschluss-Checkliste | DB 3. + Draft-Tests | ✅ Logik / ⏳ UI |
+| Demo-Kündigung „Büromietvertrag Mainz": leer bleibende Unbekannte, Freigabe, Step-up, simulierter Versand, Abschluss-Checkliste | DB 3. + Draft-Tests | ✅ Logik + UI (E2E) |
 | Szenario 2 „Erinnere mich nächste Woche …" | priority_capture_draft.test | ✅ (Parser) |
 | Szenario 8 „Ich bin überfordert" | priority_capture_draft.test | ✅ (Auswahl) |
 | Szenario 11 doppelte Bankimporte | finance.test | ✅ |

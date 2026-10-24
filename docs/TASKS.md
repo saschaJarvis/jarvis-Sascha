@@ -8,15 +8,17 @@
 - [x] Domänenlogik: Geld, FX, Zeit/Zeitzonen, Erinnerungen, Priorität/Heute, Zustandsmaschinen, Kündigungsentwurf, Dedup/Transfers/Abos, Tilgung, Prognose, Schnellerfassung, LTV – 43 Unit-Tests
 - [x] Paritätsprüfung TS ↔ SQL, CI-Workflow, `.env.example`, Demo-Seed
 
+## Erledigt – 24.10.2026 (Abend)
+- [x] npm freigeschaltet, GitHub-Repo `saschaJarvis/jarvis-sascha` verbunden
+- [x] Next.js-App: Anmeldung + TOTP-Pflicht, Einrichtung, Heute, Aufgaben, Eingang, Leben, Jarvis, Dokumente, Verträge/Kündigung, Dubai, Einstellungen, Export
+- [x] Playwright-E2E (2 Abläufe, iPhone-Viewport) + Bildschirmfotos in docs/screens
+
 ## Als Nächstes
-- [ ] (Sascha) npm freischalten, GitHub verbinden
-- [ ] Next.js-Shell, Supabase-Client, Login + TOTP-Enrolment + aal2-Pflicht
-- [ ] Heute-Screen · Aufgabe-Detail · Schnellerfassung · „Ich bin überfordert"
-- [ ] Demo-Kündigung UI (Akzeptanztest)
-- [ ] Dokument-Upload in privaten Bucket + Scan-Worker
-- [ ] Onboarding-Wizard
-- [ ] Erinnerungs-Worker + Resend
-- [ ] Playwright-E2E
+- [ ] (Sascha) Supabase-Projekt (EU) + Vercel anlegen → Supabase Auth anbinden, App online stellen
+- [ ] Erinnerungs-Worker (Cron) + Resend (nur an dich selbst)
+- [ ] Finanz-Cockpit-Ansicht + Kontoauszug-Import in der App
+- [ ] Echter Virenscanner (ClamAV-Worker)
+- [ ] Passkeys, CSP mit Nonces
 - [ ] Kündigungs-Fristrechner Wohnraum (§ 573c, Regel R2) – erst nach Gegenprüfung der Werktagsregel
 - [ ] Wegzugs-Abhängigkeiten als Vorlage (R13: Steuerberater → Abmeldung; KV UAE → KV DE Ende; Visum → Container)
 

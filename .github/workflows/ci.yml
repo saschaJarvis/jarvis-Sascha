@@ -32,6 +32,16 @@ jobs:
       - run: npm run test:unit
       - run: npm run test:db
       - run: npm run test:parity
+      - name: E2E (lokale Anmeldung, iPhone-Viewport)
+        env:
+          DATABASE_URL: postgres://postgres@localhost:5432/jarvis_dev
+          ALLOW_SIGNUP: 'true'
+        run: |
+          export AUTH_SECRET=$(openssl rand -base64 48)
+          bash scripts/db-local.sh --reset
+          npx playwright install --with-deps chromium
+          npm run build
+          npm run test:e2e
       - name: Keine Geheimnisse im Repo
         run: |
           ! git grep -nE '(sk_live|sk-ant-|eyJhbGciOi|-----BEGIN (RSA|EC|OPENSSH) PRIVATE KEY)' -- ':!*.md' ':!.env.example' ':!.github/workflows/ci.yml'
