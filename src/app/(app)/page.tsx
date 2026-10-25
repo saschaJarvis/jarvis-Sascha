@@ -23,6 +23,7 @@ import { loadNetWorth } from '@/server/networth';
 import { NetWorthBlock } from '@/components/net-worth';
 import { StatementLine } from '@/components/statements';
 import { kickStatements, loadStatements } from '@/server/statements';
+import { kickMetalInvoices } from '@/server/metal-invoices';
 import { AutoRefresh } from '@/components/auto-refresh';
 import { DOMAIN_LABEL as DOMAIN } from '@/lib/labels';
 import { claudeAvailable, AI_CONSENT } from '@/server/claude';
@@ -44,6 +45,7 @@ export default async function BridgePage() {
   const s = await requireUser();
   await ensureBillTasks(s);
   await kickStatements(s).catch((e) => console.error('[statement] kick', e));
+  await kickMetalInvoices(s).catch((e) => console.error('[metal-invoice] kick', e));
   const [profile, open, done, closedCal, extra, fx, ext, nw] = await Promise.all([
     db(s).profile(), db(s).openTasks(), db(s).recentlyDone(),
     db(s).doneInRange(new Date(Date.now() - 8 * 86_400_000), new Date(Date.now() + 9 * 7 * 86_400_000)),
