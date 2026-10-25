@@ -14,3 +14,14 @@ test('Feingewicht aus Produktname und bekannten Münzen', () => {
   assert.equal(knownFineWeight('Goldbarren 2,5 g'), 2.5);
   assert.equal(knownFineWeight('Goldschmuck Kette'), null);
 });
+
+test('Standard-1-oz-Produkte ohne Gewichtsangabe', () => {
+  assert.equal(knownFineWeight('Dragon Rectangle Goldbarren 2022'), 31.1035);
+  assert.equal(knownFineWeight('Rectangular Drache Gold 2019'), 31.1035);
+  assert.equal(knownFineWeight('Krügerrand 2022'), 31.1035);
+  assert.equal(knownFineWeight('Maple Leaf Gold'), 31.1035);
+  assert.equal(knownFineWeight('1/2 Krügerrand'), null);
+  assert.equal(knownFineWeight('Halber Maple Leaf'), null);
+  assert.equal(knownFineWeight('Känguru 1 kg Silber'), null);
+  assert.equal(knownFineWeight('Goldbarren Heraeus'), null);
+});

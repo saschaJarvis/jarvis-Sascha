@@ -19,6 +19,18 @@ const KNOWN: Array<{ re: RegExp; g: number }> = [
   { re: /50\s*pesos/i, g: 37.4999 },
 ];
 
+/**
+ * Anlageprodukte, die es standardmäßig nur bzw. fast nur in 1 oz gibt (Gold wie Silber) –
+ * greift nur, wenn der Name keine Bruchteile nennt („1/2“, „halbe“, „1/10“ …).
+ */
+const ONE_OZ: RegExp[] = [
+  /(dragon|drachen?)\b.*rectang|rectang.*\b(dragon|drachen?)\b/i, // Perth Mint Dragon Rectangle (Barren/Münze)
+  /kr(ue|ü|u)gerrand/i, /maple\s*leaf/i, /britannia/i, /philharmoniker/i,
+  /k(ae|ä|a)nguru|kangaroo|nugget/i, /american\s*(gold\s*|silver\s*)?eagle/i, /buffalo/i,
+  /arche\s*noah|noah'?s\s*ark/i, /big\s*five/i, /libertad/i,
+];
+const FRACTION = /\b\d+\s*\/\s*\d+\b|\bhalbe?r?\b|\bhalf\b|\bviertel\b|\bquarter\b|\btenth\b/i;
+
 /** Feingewicht aus dem Produktnamen: „1 oz“, „1/2 Unze“, „100 g“ oder eine bekannte Münze. null = unbekannt. */
 export function knownFineWeight(product: string): number | null {
   const p = product.replace(',', '.');
@@ -34,5 +46,6 @@ export function knownFineWeight(product: string): number | null {
     const n = Number(g[1]);
     if (n > 0 && n <= 1_000_000) return n;
   }
+  if (!FRACTION.test(p) && !/\d\s*kg\b|kilo/i.test(p) && ONE_OZ.some((re) => re.test(p))) return OZ;
   return null;
 }
