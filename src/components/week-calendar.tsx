@@ -4,8 +4,8 @@ import { useRef, useState } from 'react';
 
 import type { CalItem } from '@/lib/calendar';
 export type { CalItem };
-export interface CalDay { key: number; wd: string; wdLong: string; date: string; isToday: boolean; isPast: boolean; holiday: { name: string; scope: string } | null;
-  observances: Array<{ name: string; note: string | null; kind: 'season' | 'tradition' | 'clock' }>; items: CalItem[] }
+export interface CalDay { key: number; wd: string; wdLong: string; date: string; isToday: boolean; isPast: boolean; holiday: { name: string; scope: string; emoji: string } | null;
+  observances: Array<{ name: string; note: string | null; kind: 'season' | 'tradition' | 'clock'; emoji: string }>; items: CalItem[] }
 export interface CalWeek { offset: number; label: string; days: CalDay[] }
 
 /** Wochenkalender mit Reitern Mo–So; Pfeile blättern zwischen den Wochen (ohne Neuladen). */
@@ -60,8 +60,14 @@ export function WeekCalendar({ weeks, domainLabel, hasSources = true }: { weeks:
                 {d.items.length || '·'}
               </span>
               {d.isToday && <span className="absolute -top-px left-1/2 h-0.5 w-6 -translate-x-1/2 bg-sea" aria-hidden="true" />}
-              {d.holiday ? <span className="mono absolute right-0.5 top-0.5 text-[.5rem] font-bold text-warn" title={d.holiday.name} aria-label={`Feiertag: ${d.holiday.name}`}>FT</span>
-                : d.observances.length > 0 && <span className="absolute right-1 top-0.5 text-[.55rem] text-glow" title={d.observances.map((o) => o.name).join(', ')} aria-label={d.observances.map((o) => o.name).join(', ')}>✦</span>}
+              {(d.holiday || d.observances.length > 0) && (
+                <span className="pointer-events-none absolute -right-1 -top-2 flex text-[.8rem] leading-none drop-shadow-[0_0_4px_rgba(0,0,0,.9)]"
+                  title={[d.holiday?.name, ...d.observances.map((o) => o.name)].filter(Boolean).join(', ')}
+                  aria-label={[d.holiday ? `Feiertag: ${d.holiday.name}` : null, ...d.observances.map((o) => o.name)].filter(Boolean).join(', ')}>
+                  {[d.holiday?.emoji, ...d.observances.map((o) => o.emoji)].filter(Boolean).slice(0, 2).join('')}
+                </span>
+              )}
+              {d.holiday && <span className="mono text-[.55rem] font-bold uppercase text-warn" aria-hidden="true">FT</span>}
             </button>
           );
         })}
@@ -71,13 +77,13 @@ export function WeekCalendar({ weeks, domainLabel, hasSources = true }: { weeks:
         <p className="mb-2 text-[1.05rem] font-semibold">{day.isToday ? 'Heute, ' : ''}{day.wdLong}, {day.date}</p>
         {day.holiday && (
           <p className="mb-2 flex flex-wrap items-baseline gap-x-2 border-l-2 border-warn bg-warn-soft px-3 py-2">
-            <span className="font-semibold text-warn">🇩🇪 {day.holiday.name}</span>
+            <span className="font-semibold text-warn"><span className="mr-1 text-lg">{day.holiday.emoji}</span>{day.holiday.name}</span>
             <span className="mono text-[.6rem] uppercase tracking-wider text-muted">{day.holiday.scope === 'bundesweit' ? 'Feiertag in ganz Deutschland · Ämter, Banken, Post geschlossen' : 'Feiertag in Rheinland-Pfalz · Ämter in Mainz/RLP geschlossen'}</span>
           </p>
         )}
         {day.observances.map((o) => (
           <p key={o.name} className="mb-2 flex flex-wrap items-baseline gap-x-2 border-l-2 border-sea/60 bg-sea-soft/40 px-3 py-1.5">
-            <span className="font-semibold">{o.kind === 'season' ? '☀' : o.kind === 'clock' ? '⏱' : '✦'} {o.name}</span>
+            <span className="font-semibold"><span className="mr-1 text-lg">{o.emoji}</span>{o.name}</span>
             {o.note && <span className="mono text-[.6rem] uppercase tracking-wider text-muted">{o.note}</span>}
           </p>
         ))}

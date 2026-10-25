@@ -80,8 +80,8 @@ export function buildCalendar(tasks: readonly CalTask[], tz: string, now: Date, 
         .map(({ sort: _s, ...x }) => x);
       const h = hol.get(dn);
       return { key: dn, wd: WD[dow], wdLong: WD_LONG[dow], date: `${ddmm(dn)}${new Date(dn * DAY).getUTCFullYear()}`, isToday: dn === today, isPast: dn < today,
-        holiday: h ? { name: h.name, scope: h.scope } : null,
-        observances: (obs.get(dn) ?? []).map((o) => ({ name: o.name, note: o.note, kind: o.kind })), items };
+        holiday: h ? { name: h.name, scope: h.scope, emoji: h.emoji } : null,
+        observances: (obs.get(dn) ?? []).map((o) => ({ name: o.name, note: o.note, kind: o.kind, emoji: o.emoji })), items };
     });
     weeks.push({ offset: w, label: `KW ${isoWeek(start)} · ${ddmm(start)} – ${ddmm(start + 6)}`, days });
   }

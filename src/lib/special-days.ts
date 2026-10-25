@@ -5,7 +5,7 @@
  */
 import { easterSunday } from './holidays';
 
-export interface Observance { dn: number; date: string; name: string; note: string | null; kind: 'season' | 'tradition' | 'clock' }
+export interface Observance { dn: number; date: string; name: string; note: string | null; kind: 'season' | 'tradition' | 'clock'; emoji: string }
 
 const DAY = 86_400_000;
 const D2R = Math.PI / 180;
@@ -45,6 +45,14 @@ export function seasonStart(year: number, which: keyof typeof MEAN): Date {
   return new Date(tt - 69_000); // TT → UTC (ΔT ≈ 69 s)
 }
 
+const EMOJI: Record<string, string> = {
+  'Valentinstag': '💘', 'Weiberfastnacht': '🎭', 'Rosenmontag': '🎉', 'Aschermittwoch': '🐟',
+  'Frühlingsanfang': '🌷', 'Zeitumstellung (Sommerzeit)': '🕐', 'Ostersonntag': '🐣', 'Muttertag': '💐',
+  'Pfingstsonntag': '🕊️', 'Sommeranfang': '☀️', 'Herbstanfang': '🍂', 'Zeitumstellung (Winterzeit)': '🕐',
+  'Halloween': '🎃', 'Martinstag · 11.11.': '🏮', '1. Advent': '🕯️', '2. Advent': '🕯️', '3. Advent': '🕯️', '4. Advent': '🕯️',
+  'Nikolaus': '🎅', 'Winteranfang': '❄️', 'Heiligabend': '🎄', 'Silvester': '🎆',
+};
+
 export function observances(year: number, tz = 'Europe/Berlin'): Observance[] {
   const e = easterSunday(year);
   const de = (d: Date) => new Intl.DateTimeFormat('de-DE', { timeZone: tz, hour: '2-digit', minute: '2-digit' }).format(d);
@@ -55,7 +63,7 @@ export function observances(year: number, tz = 'Europe/Berlin'): Observance[] {
   };
   const xmas = fixed(year, 12, 25);
   const advent4 = xmas - (dow(xmas) === 0 ? 7 : dow(xmas));
-  const list: Array<Omit<Observance, 'date'>> = [
+  const list: Array<Omit<Observance, 'date' | 'emoji'>> = [
     { dn: fixed(year, 2, 14), name: 'Valentinstag', note: null, kind: 'tradition' },
     { dn: e - 52, name: 'Weiberfastnacht', note: 'Fastnacht in Mainz', kind: 'tradition' },
     { dn: e - 48, name: 'Rosenmontag', note: 'Rosenmontagszug in Mainz – viele Büros zu', kind: 'tradition' },
@@ -79,7 +87,7 @@ export function observances(year: number, tz = 'Europe/Berlin'): Observance[] {
     { dn: fixed(year, 12, 24), name: 'Heiligabend', note: 'Kein Feiertag – Geschäfte und Ämter in DE meist nur vormittags offen', kind: 'tradition' },
     { dn: fixed(year, 12, 31), name: 'Silvester', note: 'Kein Feiertag – Ämter und Banken in DE meist nur vormittags offen', kind: 'tradition' },
   ];
-  return list.map((o) => ({ ...o, date: iso(o.dn) })).sort((a, b) => a.dn - b.dn);
+  return list.map((o) => ({ ...o, date: iso(o.dn), emoji: EMOJI[o.name] ?? '✦' })).sort((a, b) => a.dn - b.dn);
 }
 
 export function observancesBetween(fromDn: number, toDn: number): Observance[] {

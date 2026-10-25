@@ -3,7 +3,7 @@
  * Bundesweit + Rheinland-Pfalz (Mainz). Grundlage: Feiertagsgesetze des Bundes/der Länder;
  * RLP: Landesfeiertagsgesetz (Fronleichnam, Allerheiligen).
  */
-export interface Holiday { dn: number; date: string; name: string; scope: 'bundesweit' | 'Rheinland-Pfalz' }
+export interface Holiday { dn: number; date: string; name: string; scope: 'bundesweit' | 'Rheinland-Pfalz'; emoji: string }
 
 const DAY = 86_400_000;
 
@@ -19,6 +19,12 @@ export function easterSunday(year: number): number {
 
 const fixed = (y: number, m: number, d: number) => Date.UTC(y, m - 1, d) / DAY;
 const iso = (dn: number) => new Date(dn * DAY).toISOString().slice(0, 10);
+
+const EMOJI: Record<string, string> = {
+  'Neujahr': '🥂', 'Karfreitag': '✝️', 'Ostermontag': '🐰', 'Tag der Arbeit': '🛠️', 'Christi Himmelfahrt': '☁️',
+  'Pfingstmontag': '🕊️', 'Tag der Deutschen Einheit': '🇩🇪', '1. Weihnachtstag': '🎁', '2. Weihnachtstag': '🎁',
+  'Fronleichnam': '⛪', 'Allerheiligen': '🕯️',
+};
 
 export function germanHolidays(year: number, state: 'RP' | null = 'RP'): Holiday[] {
   const e = easterSunday(year);
@@ -36,7 +42,7 @@ export function germanHolidays(year: number, state: 'RP' | null = 'RP'): Holiday
   if (state === 'RP') {
     list.push([e + 60, 'Fronleichnam', 'Rheinland-Pfalz'], [fixed(year, 11, 1), 'Allerheiligen', 'Rheinland-Pfalz']);
   }
-  return list.map(([dn, name, scope]) => ({ dn, date: iso(dn), name, scope })).sort((a, b) => a.dn - b.dn);
+  return list.map(([dn, name, scope]) => ({ dn, date: iso(dn), name, scope, emoji: EMOJI[name] ?? '🇩🇪' })).sort((a, b) => a.dn - b.dn);
 }
 
 /** Feiertage für einen Zeitraum von Kalendertagen (inklusive) */

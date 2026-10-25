@@ -99,8 +99,8 @@ export default async function BridgePage() {
     todayEvents.length ? `Im Kalender ${todayEvents.length === 1 ? 'steht heute ein Termin' : `stehen heute ${todayEvents.length} Termine`}${nextEvent ? `, als Nächstes „${nextEvent.title}“ um ${hhmm(nextEvent.start, tz)} Uhr` : ''}.` : '',
     todayTasks.length ? `${todayTasks.length === 1 ? 'Eine Aufgabe hat' : `${todayTasks.length} Aufgaben haben`} heute eine Frist.` : todayEvents.length ? '' : 'Heute hast du keine festen Termine.',
     overdue.length ? `${overdue.length} ${overdue.length === 1 ? 'Aufgabe ist' : 'Aufgaben sind'} überfällig.` : 'Nichts ist überfällig.',
-    todaySpecial.length ? `Heute: ${todaySpecial.map((o) => `${o.name}${o.note ? ` (${o.note})` : ''}`).join('; ')}.` : '',
-    nextHoliday ? (nextHoliday.dn === today ? `Heute ist in Deutschland Feiertag (${nextHoliday.name}) – Ämter und Banken dort sind zu.` : `${nextHoliday.dn === today + 1 ? 'Morgen' : `Am ${new Date(nextHoliday.dn * 86_400_000).toLocaleDateString('de-DE', { weekday: 'long', timeZone: 'UTC' })}`} ist in Deutschland Feiertag (${nextHoliday.name}).`) : '',
+    todaySpecial.length ? `Heute: ${todaySpecial.map((o) => `${o.emoji} ${o.name}${o.note ? ` (${o.note})` : ''}`).join('; ')}.` : '',
+    nextHoliday ? (nextHoliday.dn === today ? `${nextHoliday.emoji} Heute ist in Deutschland Feiertag (${nextHoliday.name}) – Ämter und Banken dort sind zu.` : `${nextHoliday.dn === today + 1 ? 'Morgen' : `Am ${new Date(nextHoliday.dn * 86_400_000).toLocaleDateString('de-DE', { weekday: 'long', timeZone: 'UTC' })}`} ist in Deutschland Feiertag (${nextHoliday.name}).`) : '',
     main ? `Mein Vorschlag für jetzt: „${main.title}“.` : 'Gerade drängt nichts – guter Moment, Dinge aus dem Kopf zu notieren.',
   ].filter(Boolean).join(' ');
 

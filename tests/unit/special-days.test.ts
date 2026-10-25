@@ -38,3 +38,10 @@ test('Kalender: Feiertag und besondere Tage getrennt, mehrere pro Tag möglich',
   assert.equal(w1[3].holiday, null);
   assert.equal(w1[4].holiday?.name, '1. Weihnachtstag');
 });
+
+test('Jeder besondere Tag und Feiertag hat ein eigenes Emoji', async () => {
+  const { germanHolidays } = await import('../../src/lib/holidays');
+  for (const o of observances(2027)) assert.notEqual(o.emoji, '✦', o.name);
+  for (const h of germanHolidays(2027).filter((x) => x.name !== 'Tag der Deutschen Einheit')) assert.notEqual(h.emoji, '🇩🇪', h.name);
+  assert.equal(observances(2026).find((o) => o.name === 'Silvester')?.emoji, '🎆');
+});
