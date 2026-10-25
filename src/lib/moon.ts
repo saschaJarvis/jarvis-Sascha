@@ -171,3 +171,60 @@ export function sunVector(m: Pick<MoonState, 'fraction' | 'brightLimbFromZenith'
   const chi = m.brightLimbFromZenith;
   return [-Math.sin(chi) * sinI, -Math.cos(chi) * sinI, cosI];
 }
+
+// ───────────────────────── Sonne ─────────────────────────
+
+export interface SunState {
+  up: boolean;
+  altitudeDeg: number;
+  azimuthDeg: number;
+  direction: string;
+  sunrise: Date;
+  sunset: Date;
+  noon: Date;
+  dayLengthMin: number;
+  nextSunrise: Date;
+  nextSunset: Date;
+}
+
+const SUN_H0 = -0.833; // Grad: Oberrand am Horizont inkl. Refraktion
+
+export function sunState(now: Date, place: { lat: number; lon: number; tz: string } = DUBAI): SunState {
+  const pos = SunCalc.getPosition(now, place.lat, place.lon);
+  const noonOf = (d: Date) => new Date(zonedMidnight(d, place.tz).getTime() + 12 * 3_600_000);
+  const today = SunCalc.getTimes(noonOf(now), place.lat, place.lon);
+  const tomorrow = SunCalc.getTimes(new Date(noonOf(now).getTime() + 86_400_000), place.lat, place.lon);
+  const azimuthDeg = ((pos.azimuth * DEG + 180) % 360 + 360) % 360;
+  return {
+    up: pos.altitude * DEG > SUN_H0,
+    altitudeDeg: pos.altitude * DEG,
+    azimuthDeg,
+    direction: DIRS[Math.round(azimuthDeg / 45) % 8],
+    sunrise: today.sunrise,
+    sunset: today.sunset,
+    noon: today.solarNoon,
+    dayLengthMin: Math.round((today.sunset.getTime() - today.sunrise.getTime()) / MIN),
+    nextSunrise: now < today.sunrise ? today.sunrise : tomorrow.sunrise,
+    nextSunset: now < today.sunset ? today.sunset : tomorrow.sunset,
+  };
+}
+
+/**
+ * Umriss der beleuchteten Mondfläche als SVG-Pfad (Mittelpunkt 0/0, Radius r), beleuchteter Rand zeigt nach +x.
+ * Danach um `limbRotationDeg` drehen.
+ */
+export function litPath(fraction: number, r: number): string {
+  const k = Math.min(1, Math.max(0, fraction));
+  if (k < 0.005) return '';
+  if (k > 0.995) return `M0 ${-r} A${r} ${r} 0 1 1 0 ${r} A${r} ${r} 0 1 1 0 ${-r}Z`;
+  const rx = Math.abs(2 * k - 1) * r;
+  // rechte Hälfte (Rand), dann Terminator zurück nach oben: Sichel wölbt nach rechts, Dreiviertel nach links
+  const sweep = k > 0.5 ? 1 : 0;
+  return `M0 ${-r} A${r} ${r} 0 0 1 0 ${r} A${rx.toFixed(3)} ${r} 0 0 ${sweep} 0 ${-r}Z`;
+}
+
+/** SVG-Drehwinkel (Grad, im Uhrzeigersinn) von +x zur Richtung des beleuchteten Randes am Himmel */
+export function limbRotationDeg(brightLimbFromZenith: number): number {
+  const x = -Math.sin(brightLimbFromZenith), y = -Math.cos(brightLimbFromZenith);
+  return Math.atan2(y, x) * DEG;
+}

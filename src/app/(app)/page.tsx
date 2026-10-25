@@ -147,8 +147,7 @@ export default async function BridgePage() {
                 <CoreStat label="Nachweise" value={evidence.length} sub="Beleg fehlt" tone={evidence.length ? 'warn' : 'muted'} href="/eingang" />
               </div>
               <div className="relative">
-                <div className="hidden sm:block"><MoonCore size={300} initialNow={now.getTime()} /></div>
-                <div className="sm:hidden"><MoonCore size={150} initialNow={now.getTime()} /></div>
+                <MoonCore initialNow={now.getTime()} className="w-[150px] sm:w-[300px]" />
               </div>
               <div className="grid gap-8">
                 <CoreStat label="Diese Woche" value={thisWeek.length} sub="mit Frist" tone="sea" href="/aufgaben" />

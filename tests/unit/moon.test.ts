@@ -51,3 +51,20 @@ test('Darstellung: Neumond dunkel, Vollmond hell, zunehmender Halbmond rechts (N
   assert.ok(v[0] > 0.99 && Math.abs(v[2]) < 1e-9);
   assert.deepEqual(phaseName(0.25), { name: 'Erstes Viertel', emoji: '🌓' });
 });
+
+test('Sonne Dubai 25.10.2026: Tageslänge 11:24 (tutiempo.net, ±4 Min.), Aufgang/Untergang plausibel', async () => {
+  const { sunState, litPath, limbRotationDeg } = await import('../../src/lib/moon');
+  const s = sunState(new Date('2026-10-25T09:00:00Z'));
+  const local = (d: Date) => (d.getUTCHours() + 4) * 60 + d.getUTCMinutes();
+  assert.ok(Math.abs(s.dayLengthMin - (11 * 60 + 24)) <= 4, String(s.dayLengthMin));
+  assert.ok(Math.abs(local(s.sunrise) - (6 * 60 + 22)) <= 10, s.sunrise.toISOString());
+  assert.ok(Math.abs(local(s.sunset) - (17 * 60 + 45)) <= 10, s.sunset.toISOString());
+  assert.equal(s.up, true);
+  assert.equal(sunState(new Date('2026-10-25T18:00:00Z')).up, false); // 22:00 Dubai
+  assert.equal(litPath(0, 50), '');
+  assert.match(litPath(1, 50), /A50 50 0 1 1/);
+  assert.match(litPath(0.25, 50), /A25\.000 50 0 0 0 0 -50Z$/); // Sichel
+  assert.match(litPath(0.75, 50), /A25\.000 50 0 0 1 0 -50Z$/); // Dreiviertel
+  assert.ok(Math.abs(limbRotationDeg(-Math.PI / 2) - 0) < 1e-9);   // Rand rechts
+  assert.ok(Math.abs(limbRotationDeg(0) - -90) < 1e-9);            // Rand oben
+});
