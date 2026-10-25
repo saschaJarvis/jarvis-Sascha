@@ -25,35 +25,40 @@ export const CATEGORIES = [
 
 const isoDate = z.string().regex(/^\d{4}-\d{2}-\d{2}$/);
 const money = z.number().finite();
+// Tolerant: lange Texte kürzen statt verwerfen (Claude schreibt manchmal ausführlicher als verlangt)
+const txt = (n: number) => z.string().transform((v) => (v.length > n ? `${v.slice(0, n - 1)}…` : v));
+const optTxt = (n: number) => txt(n).nullable().optional();
+const cap = <T extends z.ZodTypeAny>(t: T, n: number) => z.array(t).default([]).transform((a) => a.slice(0, n));
+// „DE38 3007 … 97 00“, „...9700“, „9700“ → „9700“; sonst null
+const last4 = z.string().nullable().optional().transform((v) => {
+  const c = (v ?? '').toUpperCase().replace(/[^0-9A-Z]/g, '');
+  return c.length >= 4 ? c.slice(-4) : null;
+});
+const category = z.string().transform((v) => ((CATEGORIES as readonly string[]).includes(v) ? v : 'Sonstiges') as (typeof CATEGORIES)[number]);
 export const StatementAnalysis = z.object({
-  bank: z.string().max(80),
-  account_name: z.string().max(80).nullable().optional(),
-  iban_last4: z.string().regex(/^[0-9A-Z]{4}$/).nullable().optional(),
-  currency: z.string().length(3),
-  statement_no: z.string().max(30).nullable().optional(),
+  bank: txt(80),
+  account_name: optTxt(80),
+  iban_last4: last4,
+  currency: z.string().transform((v) => v.trim().toUpperCase().slice(0, 3)).pipe(z.string().length(3)),
+  statement_no: optTxt(30),
   period_from: isoDate,
   period_to: isoDate,
   opening_balance: money,
   closing_balance: money,
   total_in: money,
   total_out: money,
-  summary: z.string().max(800),
-  categories: z.array(z.object({
-    category: z.enum(CATEGORIES),
-    direction: z.enum(['in', 'out']),
-    amount: money,
-    count: z.number().int().min(0).max(5000),
-    examples: z.string().max(160).nullable().optional(),
-  })).max(32).default([]),
-  largest: z.array(z.object({
-    date: isoDate, counterparty: z.string().max(120), purpose: z.string().max(160).nullable().optional(),
-    amount: money, category: z.enum(CATEGORIES),
-  })).max(15).default([]),
-  recurring: z.array(z.object({
-    counterparty: z.string().max(120), what: z.string().max(120), amount: money,
-    rhythm: z.string().max(40).nullable().optional(),
-  })).max(20).default([]),
-  notes: z.array(z.string().max(300)).max(6).default([]),
+  summary: txt(800),
+  categories: cap(z.object({
+    category, direction: z.enum(['in', 'out']), amount: money,
+    count: z.number().int().min(0).catch(0), examples: optTxt(160),
+  }), 32),
+  largest: cap(z.object({
+    date: isoDate, counterparty: txt(120), purpose: optTxt(160), amount: money, category,
+  }), 15),
+  recurring: cap(z.object({
+    counterparty: txt(120), what: txt(120), amount: money, rhythm: optTxt(40),
+  }), 20),
+  notes: cap(txt(300), 6),
 });
 export type StatementAnalysis = z.infer<typeof StatementAnalysis>;
 
