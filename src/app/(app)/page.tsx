@@ -21,6 +21,8 @@ import { loadExternalEvents } from '@/server/calendars';
 import { ensureBillTasks } from '@/server/bills';
 import { loadNetWorth } from '@/server/networth';
 import { NetWorthBlock } from '@/components/net-worth';
+import { StatementLine } from '@/components/statements';
+import { kickStatements, loadStatements } from '@/server/statements';
 import { AutoRefresh } from '@/components/auto-refresh';
 import { DOMAIN_LABEL as DOMAIN } from '@/lib/labels';
 import { claudeAvailable, AI_CONSENT } from '@/server/claude';
@@ -41,6 +43,7 @@ const hhmm = (d: Date, tz: string) => new Intl.DateTimeFormat('de-DE', { timeZon
 export default async function BridgePage() {
   const s = await requireUser();
   await ensureBillTasks(s);
+  await kickStatements(s).catch((e) => console.error('[statement] kick', e));
   const [profile, open, done, closedCal, extra, fx, ext, nw] = await Promise.all([
     db(s).profile(), db(s).openTasks(), db(s).recentlyDone(),
     db(s).doneInRange(new Date(Date.now() - 8 * 86_400_000), new Date(Date.now() + 9 * 7 * 86_400_000)),
@@ -68,7 +71,7 @@ export default async function BridgePage() {
     loadExternalEvents(s, new Date(Date.now() - 8 * 86_400_000), new Date(Date.now() + 9 * 7 * 86_400_000)),
     loadNetWorth(s),
   ]);
-  const weather = await getWeather(profile.timezone);
+  const [weather, statements] = await Promise.all([getWeather(profile.timezone), loadStatements(s)]);
 
   const tz = profile.timezone;
   const now = new Date();
@@ -280,6 +283,7 @@ export default async function BridgePage() {
         <div className="order-3 grid min-w-0 grid-cols-1 content-start gap-4">
           <Panel n="04" title="Finanzen" href="/leben/finanzen" aside={fx ? `1 € = ${fx.eurAed.toLocaleString('de-DE', { minimumFractionDigits: 3, maximumFractionDigits: 3 })} AED` : 'Kurs fehlt'}>
             <NetWorthBlock nw={nw} compact />
+            <div className="mt-3"><StatementLine rows={statements} /></div>
             <AutoRefresh seconds={60} />
           </Panel>
 

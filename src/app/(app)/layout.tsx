@@ -5,6 +5,8 @@ import { getFx, getWeather } from '@/server/ext';
 import { BottomNav, Shell, TopBar } from '@/components/bottom-nav';
 
 export const dynamic = 'force-dynamic';
+// Kontoauszug-Auswertung läuft nach der Antwort (after()) und braucht bei langen Auszügen 1–3 Minuten
+export const maxDuration = 300;
 
 export default async function AppLayout({ children }: { children: React.ReactNode }) {
   const s = await requireUser();

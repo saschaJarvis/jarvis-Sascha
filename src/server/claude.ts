@@ -17,20 +17,20 @@ export const AI_CONSENT = 'ai.claude';
 export const AI_CONSENT_TEXT = 'ai-v1';
 
 /** Testmodus nur bei lokaler Anmeldung (E2E) – in Produktion (Supabase) nie aktiv. */
-const fake = () => process.env.CLAUDE_FAKE === '1' && process.env.AUTH_PROVIDER !== 'supabase';
+export const fake = () => process.env.CLAUDE_FAKE === '1' && process.env.AUTH_PROVIDER !== 'supabase';
 export const claudeAvailable = () => fake() || !!process.env.ANTHROPIC_API_KEY;
 
-type Block =
+export type Block =
   | { type: 'text'; text: string }
   | { type: 'image'; source: { type: 'base64'; media_type: string; data: string } }
   | { type: 'document'; source: { type: 'base64'; media_type: 'application/pdf'; data: string } }
   | { type: 'tool_use'; id: string; name: string; input: unknown }
   | { type: 'tool_result'; tool_use_id: string; content: string };
 export interface Msg { role: 'user' | 'assistant'; content: string | Block[] }
-interface Tool { name: string; description: string; input_schema: Record<string, unknown> }
+export interface Tool { name: string; description: string; input_schema: Record<string, unknown> }
 interface Resp { content: Block[]; stop_reason: string; usage?: { input_tokens: number; output_tokens: number } }
 
-async function call(body: { system: string; messages: Msg[]; tools?: Tool[]; tool_choice?: unknown; max_tokens: number }, model = CLAUDE_MODEL()): Promise<Resp> {
+async function call(body: { system: string; messages: Msg[]; tools?: Tool[]; tool_choice?: unknown; max_tokens: number }, model = CLAUDE_MODEL(), timeoutMs = 55_000): Promise<Resp> {
   const r = await fetch(API, {
     method: 'POST',
     headers: {
@@ -39,7 +39,7 @@ async function call(body: { system: string; messages: Msg[]; tools?: Tool[]; too
       'anthropic-version': '2023-06-01',
     },
     body: JSON.stringify({ model, ...body }),
-    signal: AbortSignal.timeout(55_000),
+    signal: AbortSignal.timeout(timeoutMs),
   });
   if (!r.ok) {
     const t = await r.text().catch(() => '');
@@ -56,16 +56,16 @@ async function call(body: { system: string; messages: Msg[]; tools?: Tool[]; too
  * Strukturierte Antwort über genau ein Werkzeug. Neuere Modelle erlauben kein erzwungenes tool_choice
  * ("tool"/"any") – daher „auto“ + klare Anweisung; kommt kein Werkzeugaufruf, einmal nachfassen.
  */
-async function callForTool(body: { system: string; messages: Msg[]; tool: Tool; max_tokens: number }, model = CLAUDE_MODEL()) {
+export async function callForTool(body: { system: string; messages: Msg[]; tool: Tool; max_tokens: number }, model = CLAUDE_MODEL(), timeoutMs = 55_000) {
   const system = `${body.system}\n\nAntworte ausschließlich, indem du das Werkzeug „${body.tool.name}“ genau einmal aufrufst – kein Fließtext.`;
   const pick = (r: Resp) => r.content.find((b): b is Extract<Block, { type: 'tool_use' }> => b.type === 'tool_use' && b.name === body.tool.name);
-  const r = await call({ system, messages: body.messages, tools: [body.tool], tool_choice: { type: 'auto' }, max_tokens: body.max_tokens }, model);
+  const r = await call({ system, messages: body.messages, tools: [body.tool], tool_choice: { type: 'auto' }, max_tokens: body.max_tokens }, model, timeoutMs);
   const first = pick(r);
   if (first) return first.input;
   const retry = await call({
     system, tools: [body.tool], tool_choice: { type: 'auto' }, max_tokens: body.max_tokens,
     messages: [...body.messages, { role: 'assistant', content: r.content.length ? r.content : '…' }, { role: 'user', content: `Bitte jetzt das Werkzeug „${body.tool.name}“ aufrufen.` }],
-  }, model);
+  }, model, timeoutMs);
   return pick(retry)?.input;
 }
 

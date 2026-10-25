@@ -10,6 +10,9 @@ import { removeAccountAction, removeGoldAction, removeWalletAction } from './act
 import { loadNetWorth } from '@/server/networth';
 import { CryptoChange, NetWorthCard } from '@/components/net-worth';
 import { AutoRefresh } from '@/components/auto-refresh';
+import { StatementsSection } from '@/components/statements';
+import { kickStatements, loadStatements } from '@/server/statements';
+import { claudeAvailable } from '@/server/claude';
 
 const KIND: Record<string, string> = { checking: 'Girokonto', savings: 'Sparkonto', deposit: 'Festgeld', credit_card: 'Kreditkarte', crypto_exchange: 'Krypto-Börse', other: 'Sonstiges', loan: 'Kredit' };
 const FORM: Record<string, string> = { bar: 'Barren', coin: 'Münze', jewelry: 'Schmuck', other: 'Sonstiges' };
@@ -22,6 +25,8 @@ const short = (a: string) => `${a.slice(0, 6)}…${a.slice(-4)}`;
 
 export default async function FinancePage() {
   const s = await requireUser();
+  // Offene Kontoauszüge im Hintergrund auswerten (Ergebnis erscheint beim nächsten Auto-Refresh)
+  await kickStatements(s).catch((e) => console.error('[statement] kick', e));
   const wallets = await db(s).run((q) => q<{ id: string; chain: Coin; address: string; label: string }>(
     WALLETS_SQL));
   const [views, prices, nw] = await Promise.all([
@@ -29,6 +34,7 @@ export default async function FinancePage() {
     coinPrices([...new Set<PriceCoin>([...wallets.map((w) => w.chain), ...(wallets.some((w) => w.chain === 'eth') ? ['qnt' as const] : [])])]),
     loadNetWorth(s),
   ]);
+  const statements = await loadStatements(s);
   const EXPLORER: Record<Coin, (a: string) => string> = { xrp: (a) => `https://livenet.xrpl.org/accounts/${a}`, eth: (a) => `https://etherscan.io/address/${a}`, btc: (a) => `https://mempool.space/address/${a}`, ada: (a) => `https://cardanoscan.io/address/${a}`, algo: (a) => `https://allo.info/account/${a}` };
   const now = new Date();
 
@@ -246,12 +252,11 @@ export default async function FinancePage() {
         </div>
       </Section>
 
-      <Section title="Kontoauszüge">
-        <div className="card grid gap-2">
-          <p className="text-muted">Kontoauszug-Import (CSV/XLSX) kommt als Nächstes – dann hakt Jarvis z. B. die Lager-Miete automatisch ab, sobald die Zahlung auf dem Auszug steht.</p>
-          <p className="notice notice-info text-sm">Jarvis fragt nie nach Bank-Passwörtern. Du lädst nur Exporte hoch.</p>
-        </div>
-      </Section>
+      <div id="kontoauszuege" className="scroll-mt-20">
+        <Section title="Kontoauszüge" aside={<span className="mono text-xs text-muted">{statements.filter((r) => r.status === 'done').length} ausgewertet</span>}>
+          <StatementsSection rows={statements} claude={claudeAvailable()} />
+        </Section>
+      </div>
     </div>
   );
 }

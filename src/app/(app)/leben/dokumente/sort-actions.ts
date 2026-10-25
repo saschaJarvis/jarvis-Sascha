@@ -5,6 +5,7 @@ import { requireUser, usingSupabase } from '@/server/auth';
 import { db } from '@/server/repo';
 import { friendlyDbError, withService } from '@/server/db';
 import { FOLDERS, FOLDER_LABEL, storeUpload, type Folder } from '@/server/storage';
+import { kickStatements } from '@/server/statements';
 import { AI_CONSENT, AI_CONSENT_TEXT, analyzeDocument, claudeAvailable, CLAUDE_MODEL, guessFolderFromName, type DocAnalysis } from '@/server/claude';
 
 export interface SortResult {
@@ -95,7 +96,16 @@ export async function sortUploadAction(_: SortState, fd: FormData): Promise<Sort
       results.push({ name, ok: false, error: e instanceof Error && /^(Datei|Claude)/.test(e.message) ? e.message : friendlyDbError(e) });
     }
   }
+  // Neue Kontoauszüge gleich im Hintergrund auswerten (Finanzen + Brücke aktualisieren sich danach)
+  let statementNote: string | undefined;
+  if (results.some((r) => r.ok && r.folder === 'banks')) {
+    try {
+      const n = await kickStatements(s);
+      if (n) statementNote = `${n === 1 ? 'Kontoauszug wird' : `${n} Kontoauszüge werden`} jetzt ausgewertet – in 1–3 Minuten unter Finanzen.`;
+    } catch (e) { console.error('[statement] kick', e); }
+  }
   revalidatePath('/', 'layout');
+  if (statementNote) return { results, note: statementNote };
   const note = !claudeAvailable() ? 'Claude ist noch nicht verbunden – sortiert wurde nur nach Dateiname.'
     : !consent ? 'Ohne dein Häkchen liest Claude nicht mit – sortiert wurde nur nach Dateiname.' : undefined;
   return { results, note };
