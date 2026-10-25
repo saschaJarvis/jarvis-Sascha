@@ -14,6 +14,7 @@ import { QuickCapture } from '@/components/quick-capture';
 import { SortUpload } from '@/components/sort-upload';
 import { WeekCalendar } from '@/components/week-calendar';
 import { buildCalendar, eventsOnDay } from '@/lib/calendar';
+import { holidaysBetween } from '@/lib/holidays';
 import { loadExternalEvents } from '@/server/calendars';
 import { DOMAIN_LABEL as DOMAIN } from '@/lib/labels';
 import { claudeAvailable, AI_CONSENT } from '@/server/claude';
@@ -77,6 +78,7 @@ export default async function BridgePage() {
   const ranked = prio.map((t) => scoreTask(t, now)).sort((a, b) => b.score - a.score);
   const alerts = overdue.filter((t) => t.due_is_hard || t.urgency >= 3).slice(0, 2);
   const todayEvents = eventsOnDay(ext.events, tz, today);
+  const nextHoliday = holidaysBetween(today, today + 3)[0];
   const nextEvent = todayEvents.filter((e) => !e.allDay && e.start > now).sort((a, b) => +a.start - +b.start)[0];
   const upcoming = open.filter((t) => due(t) && due(t)! >= now).sort((a, b) => +due(a)! - +due(b)!).slice(0, 5);
 
@@ -95,6 +97,7 @@ export default async function BridgePage() {
     todayEvents.length ? `Im Kalender ${todayEvents.length === 1 ? 'steht heute ein Termin' : `stehen heute ${todayEvents.length} Termine`}${nextEvent ? `, als Nächstes „${nextEvent.title}“ um ${hhmm(nextEvent.start, tz)} Uhr` : ''}.` : '',
     todayTasks.length ? `${todayTasks.length === 1 ? 'Eine Aufgabe hat' : `${todayTasks.length} Aufgaben haben`} heute eine Frist.` : todayEvents.length ? '' : 'Heute hast du keine festen Termine.',
     overdue.length ? `${overdue.length} ${overdue.length === 1 ? 'Aufgabe ist' : 'Aufgaben sind'} überfällig.` : 'Nichts ist überfällig.',
+    nextHoliday ? (nextHoliday.dn === today ? `Heute ist in Deutschland Feiertag (${nextHoliday.name}) – Ämter und Banken dort sind zu.` : `${nextHoliday.dn === today + 1 ? 'Morgen' : `Am ${new Date(nextHoliday.dn * 86_400_000).toLocaleDateString('de-DE', { weekday: 'long', timeZone: 'UTC' })}`} ist in Deutschland Feiertag (${nextHoliday.name}).`) : '',
     main ? `Mein Vorschlag für jetzt: „${main.title}“.` : 'Gerade drängt nichts – guter Moment, Dinge aus dem Kopf zu notieren.',
   ].filter(Boolean).join(' ');
 

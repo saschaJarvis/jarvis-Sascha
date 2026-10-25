@@ -6,6 +6,7 @@ import { db } from '@/server/repo';
 import { withService } from '@/server/db';
 import { FOLDER_LABEL, type Folder } from '@/server/storage';
 import { loadExternalEvents } from '@/server/calendars';
+import { holidaysBetween } from '@/lib/holidays';
 import { AI_CONSENT, AI_CONSENT_TEXT, chat, claudeAvailable, CLAUDE_MODEL, type ChatTurn } from '@/server/claude';
 
 export interface ChatReply { answer?: string; proposals?: string[]; error?: string }
@@ -34,7 +35,9 @@ export async function askJarvisAction(raw: { question: string; history: ChatTurn
   const ext = await loadExternalEvents(s, new Date(), new Date(Date.now() + 21 * 86_400_000)).catch(() => ({ events: [] }));
   const evFmt = new Intl.DateTimeFormat('de-DE', { timeZone: tz, weekday: 'short', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
   const evLines = ext.events.slice(0, 60).map((e) => `- ${e.allDay ? `${evFmt.format(e.start).split(',')[0]}, ganztägig` : evFmt.format(e.start)} | ${e.title}${e.location ? ` | ${e.location}` : ''} | ${e.source}`);
-  const context = (await buildContext(s, tz)) + `\n\nTermine aus Saschas Kalender (nächste 3 Wochen, nur lesend):\n${evLines.join('\n') || '- keine / kein Kalender verbunden'}`;
+  const dn0 = Math.floor(Date.now() / 86_400_000);
+  const hol = holidaysBetween(dn0, dn0 + 60).map((h) => `- ${h.date}: ${h.name} (${h.scope})`).join('\n');
+  const context = (await buildContext(s, tz)) + `\n\nTermine aus Saschas Kalender (nächste 3 Wochen, nur lesend):\n${evLines.join('\n') || '- keine / kein Kalender verbunden'}\n\nGesetzliche Feiertage Deutschland/Rheinland-Pfalz (nächste 60 Tage):\n${hol || '- keine'}`;
   const now = new Intl.DateTimeFormat('de-DE', { timeZone: tz, weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' }).format(new Date()) + ` (${tz})`;
   const proposals: string[] = [];
 

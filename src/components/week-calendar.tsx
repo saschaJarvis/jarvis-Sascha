@@ -4,7 +4,7 @@ import { useRef, useState } from 'react';
 
 import type { CalItem } from '@/lib/calendar';
 export type { CalItem };
-export interface CalDay { key: number; wd: string; wdLong: string; date: string; isToday: boolean; isPast: boolean; items: CalItem[] }
+export interface CalDay { key: number; wd: string; wdLong: string; date: string; isToday: boolean; isPast: boolean; holiday: { name: string; scope: string } | null; items: CalItem[] }
 export interface CalWeek { offset: number; label: string; days: CalDay[] }
 
 /** Wochenkalender mit Reitern Mo–So; Pfeile blättern zwischen den Wochen (ohne Neuladen). */
@@ -59,6 +59,7 @@ export function WeekCalendar({ weeks, domainLabel, hasSources = true }: { weeks:
                 {d.items.length || '·'}
               </span>
               {d.isToday && <span className="absolute -top-px left-1/2 h-0.5 w-6 -translate-x-1/2 bg-sea" aria-hidden="true" />}
+              {d.holiday && <span className="mono absolute right-0.5 top-0.5 text-[.5rem] font-bold text-warn" title={d.holiday.name} aria-label={`Feiertag: ${d.holiday.name}`}>FT</span>}
             </button>
           );
         })}
@@ -66,6 +67,12 @@ export function WeekCalendar({ weeks, domainLabel, hasSources = true }: { weeks:
 
       <div role="tabpanel" id={`panel-${day.key}`} aria-labelledby={`tab-${day.key}`} className="min-h-28">
         <p className="mb-2 text-[1.05rem] font-semibold">{day.isToday ? 'Heute, ' : ''}{day.wdLong}, {day.date}</p>
+        {day.holiday && (
+          <p className="mb-2 flex flex-wrap items-baseline gap-x-2 border-l-2 border-warn bg-warn-soft px-3 py-2">
+            <span className="font-semibold text-warn">🇩🇪 {day.holiday.name}</span>
+            <span className="mono text-[.6rem] uppercase tracking-wider text-muted">{day.holiday.scope === 'bundesweit' ? 'Feiertag in ganz Deutschland · Ämter, Banken, Post geschlossen' : 'Feiertag in Rheinland-Pfalz · Ämter in Mainz/RLP geschlossen'}</span>
+          </p>
+        )}
         {day.items.length ? (
           <ol className="grid gap-1.5">
             {day.items.map((t) => (

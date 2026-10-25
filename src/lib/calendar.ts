@@ -2,6 +2,8 @@
  * Wochenkalender (Mo–So) in der Zeitzone des Nutzers. Reine Logik, ohne Server-Abhängigkeiten.
  * Zeigt Jarvis-Aufgaben mit Frist und – falls verbunden – Termine aus externen Kalendern.
  */
+import { holidaysBetween, type Holiday } from './holidays';
+
 export interface CalTask { id: string; title: string; due_at: Date | string | null; domain: string; due_is_hard: boolean }
 export interface CalExternal { uid: string; title: string; start: Date; end: Date | null; allDay: boolean; dayFrom?: number; dayTo?: number; location: string | null; source: string }
 
@@ -38,7 +40,7 @@ export function isoWeek(dn: number): number {
   return Math.floor((thursday - jan1) / 7) + 1;
 }
 
-export function buildCalendar(tasks: readonly CalTask[], tz: string, now: Date, weeksBack = 1, weeksAhead = 8, events: readonly CalExternal[] = []) {
+export function buildCalendar(tasks: readonly CalTask[], tz: string, now: Date, weeksBack = 1, weeksAhead = 8, events: readonly CalExternal[] = [], holidayState: 'RP' | null = 'RP') {
   const today = dayNo(now, tz);
   const monday = today - ((new Date(today * DAY).getUTCDay() + 6) % 7);
   const timeFmt = new Intl.DateTimeFormat('de-DE', { timeZone: tz, hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
@@ -63,6 +65,7 @@ export function buildCalendar(tasks: readonly CalTask[], tz: string, now: Date, 
     }
   }
 
+  const hol = new Map<number, Holiday>(holidaysBetween(monday - weeksBack * 7, monday + weeksAhead * 7 + 6, holidayState).map((h) => [h.dn, h]));
   const weeks = [];
   for (let w = -weeksBack; w <= weeksAhead; w++) {
     const start = monday + w * 7;
@@ -72,7 +75,9 @@ export function buildCalendar(tasks: readonly CalTask[], tz: string, now: Date, 
       const items = (byDay.get(dn) ?? [])
         .sort((a, b) => (a.time === null && b.time !== null ? -1 : b.time === null && a.time !== null ? 1 : a.sort - b.sort))
         .map(({ sort: _s, ...x }) => x);
-      return { key: dn, wd: WD[dow], wdLong: WD_LONG[dow], date: `${ddmm(dn)}${new Date(dn * DAY).getUTCFullYear()}`, isToday: dn === today, isPast: dn < today, items };
+      const h = hol.get(dn);
+      return { key: dn, wd: WD[dow], wdLong: WD_LONG[dow], date: `${ddmm(dn)}${new Date(dn * DAY).getUTCFullYear()}`, isToday: dn === today, isPast: dn < today,
+        holiday: h ? { name: h.name, scope: h.scope } : null, items };
     });
     weeks.push({ offset: w, label: `KW ${isoWeek(start)} · ${ddmm(start)} – ${ddmm(start + 6)}`, days });
   }
