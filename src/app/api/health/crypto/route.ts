@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server';
 import { coinPrices, ethTokenSymbol, loadAdaAccount, loadAlgoAccount, loadBtcAccount, loadEthAccount, loadXrpAccount, loadZecAccount, loadAtomAccount, loadXlmAccount, loadLtcAccount, loadDotAccount, loadVetAccount, loadSolAccount } from '@/server/wallets';
 import { ETH_TOKENS } from '@/lib/crypto/eth';
 import { goldPrice } from '@/server/networth';
-import { eurPer, platinumPrice, quote, resolveSymbol } from '@/server/markets';
+import { eurPer, goldDe, platinumPrice, quote, resolveSymbol, silverPrice } from '@/server/markets';
 
 export const dynamic = 'force-dynamic';
 
@@ -29,8 +29,10 @@ export async function GET() {
   // Token-Verträge gegenprüfen: liefert der Vertrag das erwartete Symbol?
   const tokenCheck = Object.fromEntries(await Promise.all(ETH_TOKENS.map(async (t) => [t.symbol, (await ethTokenSymbol(t.contract)) === t.symbol] as const)));
   // Aktien/Platin: Referenzwerte (Apple in USD, SAP über ISIN → deutsche Börse)
-  const [plat, aapl, sap, usdEur] = await Promise.all([platinumPrice(), quote('AAPL'), resolveSymbol('DE0007164600'), eurPer('USD')]);
+  const [plat, aapl, sap, usdEur, gd, silv] = await Promise.all([platinumPrice(), quote('AAPL'), resolveSymbol('DE0007164600'), eurPer('USD'), goldDe(), silverPrice()]);
   return NextResponse.json({
+    goldDe: gd ? { ok: true, goldEur: gd.gold.eur, silberEur: gd.silver.eur } : { ok: false },
+    silber: silv ? { ok: true, quelle: silv.source } : { ok: false },
     platin: plat ? { ok: true, quelle: plat.source } : { ok: false },
     aktien: { aapl: aapl ? { ok: true, waehrung: aapl.currency, vortag: aapl.prevClose != null } : { ok: false }, isinSuche: sap ? { ok: true, symbol: sap.symbol } : { ok: false }, usdEur: usdEur != null },
     ethTokens: tokenCheck,

@@ -83,8 +83,47 @@ export async function eurPer(currency: string): Promise<number | null> {
   });
 }
 
+/**
+ * gold.de-Kurse (Gold und Silber, je Feinunze in USD und EUR). gold.de hat keine Schnittstelle; die Werte stehen
+ * als <data class="au_gold_eur_s">3.566,65</data> in der öffentlichen Kursseite (/kurse/ ist laut robots.txt erlaubt).
+ * Abruf höchstens alle 10 Minuten. Platin steht dort nicht im Seitentext – dafür bleibt gold-api.com.
+ */
+export async function goldDe(): Promise<{ gold: { usd: number; eur: number }; silver: { usd: number; eur: number } } | null> {
+  return cached('golde', 600_000, async () => {
+    try {
+      const r = await fetch('https://www.gold.de/kurse/silberpreis/', { headers: { 'user-agent': 'Mozilla/5.0 (Jarvis; privat, max. 1 Abruf/10 Min.)', accept: 'text/html' }, next: { revalidate: 600 }, signal: AbortSignal.timeout(6000) });
+      if (!r.ok) return null;
+      const html = await r.text();
+      const v = (cls: string) => {
+        const m = html.match(new RegExp(`class="${cls}"[^>]*>\\s*([0-9.]+,[0-9]+)`));
+        return m ? Number(m[1].replace(/\./g, '').replace(',', '.')) : NaN;
+      };
+      const out = { gold: { usd: v('au_gold_usd_s'), eur: v('au_gold_eur_s') }, silver: { usd: v('au_silber_usd_s'), eur: v('au_silber_eur_s') } };
+      const ok = out.gold.eur > 500 && out.gold.usd > 500 && out.silver.eur > 3 && out.silver.usd > 3 && out.silver.eur < 1000;
+      if (!ok) { console.error('[gold.de] Seite unerwartet aufgebaut'); return null; }
+      return out;
+    } catch (e) { console.error('[gold.de]', (e as Error).message); return null; }
+  });
+}
+
+export interface MetalPrice { usdPerOz: number; eurPerOz?: number | null; source: string }
+
+/** Silber je Feinunze: gold.de (EUR), Ausweich gold-api.com (USD). */
+export async function silverPrice(): Promise<MetalPrice | null> {
+  const g = await goldDe();
+  if (g) return { usdPerOz: g.silver.usd, eurPerOz: g.silver.eur, source: 'gold.de' };
+  try {
+    const r = await fetch('https://api.gold-api.com/price/XAG', { next: { revalidate: 600 }, signal: AbortSignal.timeout(4000) });
+    if (r.ok) {
+      const j = (await r.json()) as { price?: number };
+      if (typeof j.price === 'number' && j.price > 3) return { usdPerOz: j.price, source: 'gold-api.com' };
+    }
+  } catch { /* kein Preis */ }
+  return null;
+}
+
 /** Platin in USD je Feinunze (gold-api.com). */
-export async function platinumPrice(): Promise<{ usdPerOz: number; source: string } | null> {
+export async function platinumPrice(): Promise<MetalPrice | null> {
   try {
     const r = await fetch('https://api.gold-api.com/price/XPT', { next: { revalidate: 600 }, signal: AbortSignal.timeout(4000) });
     if (r.ok) {

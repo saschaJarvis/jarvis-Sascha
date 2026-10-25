@@ -7,7 +7,7 @@ import { timeAgo } from '@/lib/news';
 import { AddAccountForm, AddGoldForm, AddManualForm, AddStockForm, AddWalletForm, BalanceForm, ManualAmountForm, StockQtyForm } from './wallet-form';
 import { ConnectSection } from '../../kalender/connect-form';
 import { removeAccountAction, removeGoldAction, removeManualAction, removeStockAction, removeWalletAction } from './actions';
-import { loadNetWorth } from '@/server/networth';
+import { loadNetWorth, type NetWorth } from '@/server/networth';
 import { CryptoChange, NetWorthCard } from '@/components/net-worth';
 import { AutoRefresh } from '@/components/auto-refresh';
 import { isDescriptor, keyOfDescriptor } from '@/lib/crypto/xpub';
@@ -77,60 +77,9 @@ export default async function FinancePage() {
         </div>
       </Section>
 
-      <Section title="Gold" aside={nw.gold.price ? <span className="mono text-xs text-muted">1 oz = {nf(nw.gold.price.usdPerOz, 0)} USD</span> : null}>
-        <ul className="grid gap-3">
-          {nw.gold.rows.map((g) => (
-            <li key={g.id} className="card flex items-start justify-between gap-3">
-              <div className="min-w-0">
-                <p className="font-semibold">{g.label}</p>
-                <p className="text-xs text-muted">{nf(Number(g.grams), Number(g.grams) % 1 ? 2 : 0)} g · {g.purity === 999 ? '999,9' : g.purity} · {FORM[g.form] ?? g.form}</p>
-                <form action={removeGoldAction} className="mt-1"><input type="hidden" name="id" value={g.id} /><button className="text-xs text-muted underline">Entfernen</button></form>
-              </div>
-              <div className="text-right">
-                {g.aed == null ? <p className="text-sm text-muted">Preis fehlt</p> : <>
-                  <p className="text-lg font-bold">{nf(g.aed, 0)} AED</p>
-                  {nw.eurAed && <p className="text-sm text-muted">≈ {nf(g.aed / nw.eurAed, 0)} €</p>}
-                </>}
-              </div>
-            </li>
-          ))}
-        </ul>
-        {nw.gold.price && nw.gold.count > 0 && <p className="mt-2 text-xs text-muted">Bewertung zum Spotpreis ({nw.gold.price.source}) × Feingehalt. Ankaufspreise beim Händler liegen meist etwas darunter, Schmuck oft deutlich.</p>}
-        <div className="mt-3">
-          <ConnectSection initialOpen={nw.gold.count === 0} title="+ Gold hinzufügen">
-            <div className="mt-3"><AddGoldForm /></div>
-          </ConnectSection>
-        </div>
-      </Section>
-
-      <Section title="Platin" aside={nw.platinum.price ? <span className="mono text-xs text-muted">1 oz = {nf(nw.platinum.price.usdPerOz, 0)} USD{nw.eurAed ? ` ≈ ${nf((nw.platinum.price.usdPerOz * AED_PER_USD) / nw.eurAed, 0)} €` : ''}</span> : null}>
-        {nw.platinum.count > 0 && (
-          <p className="mb-3 text-sm"><span className="text-2xl font-bold">{nf(nw.platinum.aed, 0)} AED</span>{nw.eurAed && <span className="text-muted"> ≈ {nf(nw.platinum.aed / nw.eurAed, 0)} € · {nf(nw.platinum.grams, 2)} g</span>}</p>
-        )}
-        <ul className="grid gap-3">
-          {nw.platinum.rows.map((g) => (
-            <li key={g.id} className="card flex items-start justify-between gap-3">
-              <div className="min-w-0">
-                <p className="font-semibold">{g.label}</p>
-                <p className="text-xs text-muted">{nf(Number(g.grams), Number(g.grams) % 1 ? 2 : 0)} g · {g.purity === 999 ? '999,5' : g.purity} · {FORM[g.form] ?? g.form}</p>
-                <form action={removeGoldAction} className="mt-1"><input type="hidden" name="id" value={g.id} /><button className="text-xs text-muted underline">Entfernen</button></form>
-              </div>
-              <div className="text-right">
-                {g.aed == null ? <p className="text-sm text-muted">Preis fehlt</p> : <>
-                  <p className="text-lg font-bold">{nf(g.aed, 0)} AED</p>
-                  {nw.eurAed && <p className="text-sm text-muted">≈ {nf(g.aed / nw.eurAed, 0)} €</p>}
-                </>}
-              </div>
-            </li>
-          ))}
-        </ul>
-        {nw.platinum.count > 0 && <p className="mt-2 text-xs text-muted">Bewertung zum Platin-Spotpreis{nw.platinum.price ? ` (${nw.platinum.price.source})` : ''} × Feingehalt. Wird bei Kursbewegungen mit überwacht.</p>}
-        <div className="mt-3">
-          <ConnectSection initialOpen={nw.platinum.count === 0} title="+ Platin hinzufügen">
-            <div className="mt-3"><AddGoldForm metal="platinum" /></div>
-          </ConnectSection>
-        </div>
-      </Section>
+      <MetalSection title="Gold" metal="gold" data={nw.gold} eurAed={nw.eurAed} />
+      <MetalSection title="Silber" metal="silver" data={nw.silver} eurAed={nw.eurAed} />
+      <MetalSection title="Platin" metal="platinum" data={nw.platinum} eurAed={nw.eurAed} />
 
       <Section title="Aktien & ETFs" aside={<span className="mono text-xs text-muted">{nw.stocks.count} Posten</span>}>
         {nw.stocks.count > 0 && (
@@ -430,5 +379,43 @@ export default async function FinancePage() {
         </Section>
       </div>
     </div>
+  );
+}
+
+const PURITY_TXT: Record<string, Record<number, string>> = { gold: { 999: '999,9' }, platinum: { 999: '999,5' }, silver: {} };
+
+function MetalSection({ title, metal, data, eurAed }: { title: string; metal: 'gold' | 'silver' | 'platinum'; data: NetWorth['gold']; eurAed: number | null }) {
+  const p = data.price;
+  const eurOz = p?.eurPerOz ?? (p && eurAed ? (p.usdPerOz * AED_PER_USD) / eurAed : null);
+  const oz = data.grams / 31.1034768;
+  return (
+    <Section title={title} aside={p ? <span className="mono text-xs text-muted">1 oz = {eurOz != null ? `${nf(eurOz, eurOz < 100 ? 2 : 0)} € · ` : ''}{nf(p.usdPerOz, p.usdPerOz < 100 ? 2 : 0)} USD</span> : null}>
+      {data.count > 0 && (
+        <p className="mb-3 text-sm"><span className="text-2xl font-bold">{nf(data.aed, 0)} AED</span>{eurAed && <span className="text-muted"> ≈ {nf(data.aed / eurAed, 0)} € · {nf(oz, oz < 10 ? 3 : 1)} oz ({nf(data.grams, 1)} g)</span>}</p>
+      )}
+      <ul className="grid gap-3">
+        {data.rows.map((g) => (
+          <li key={g.id} className="card flex items-start justify-between gap-3">
+            <div className="min-w-0">
+              <p className="font-semibold">{g.label}</p>
+              <p className="text-xs text-muted">{nf(Number(g.grams), Number(g.grams) % 1 ? 2 : 0)} g · {PURITY_TXT[metal][g.purity] ?? g.purity} · {FORM[g.form] ?? g.form}</p>
+              <form action={removeGoldAction} className="mt-1"><input type="hidden" name="id" value={g.id} /><button className="text-xs text-muted underline">Entfernen</button></form>
+            </div>
+            <div className="text-right">
+              {g.aed == null ? <p className="text-sm text-muted">Preis fehlt</p> : <>
+                <p className="text-lg font-bold">{nf(g.aed, 0)} AED</p>
+                {eurAed && <p className="text-sm text-muted">≈ {nf(g.aed / eurAed, 0)} €</p>}
+              </>}
+            </div>
+          </li>
+        ))}
+      </ul>
+      {p && data.count > 0 && <p className="mt-2 text-xs text-muted">Bewertung zum Spotpreis ({p.source}) × Feingehalt, wird bei Kursbewegungen mit überwacht. Händler-Ankaufspreise liegen meist etwas darunter{metal === 'silver' ? ' – bei Silbermünzen oft 10–20 %' : ''}.</p>}
+      <div className="mt-3">
+        <ConnectSection initialOpen={data.count === 0} title={`+ ${title} hinzufügen`}>
+          <div className="mt-3"><AddGoldForm metal={metal} /></div>
+        </ConnectSection>
+      </div>
+    </Section>
   );
 }

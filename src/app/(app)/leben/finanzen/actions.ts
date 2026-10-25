@@ -210,16 +210,19 @@ export async function removeAccountAction(fd: FormData): Promise<void> {
 // ---------- Gold ----------
 export async function addGoldAction(_: WalletState, fd: FormData): Promise<WalletState> {
   const s = await requireUser();
-  const metal = fd.get('metal') === 'platinum' ? 'platinum' : 'gold';
-  const label = String(fd.get('label') ?? '').trim().slice(0, 60) || (metal === 'platinum' ? 'Platin' : 'Gold');
+  const mv = fd.get('metal');
+  const metal = mv === 'platinum' || mv === 'silver' ? mv : 'gold';
+  const count = parseAmount(String(fd.get('count') ?? '') || '1');
+  const label = String(fd.get('label') ?? '').trim().slice(0, 60) || ({ gold: 'Gold', platinum: 'Platin', silver: 'Silber' } as const)[metal];
   const unit = String(fd.get('unit') ?? 'g');
   const qty = parseAmount(String(fd.get('qty') ?? ''));
   const purity = Number(fd.get('purity') ?? 999);
   const form = String(fd.get('form') ?? 'bar');
   if (qty == null || qty <= 0) return { error: 'Bitte die Menge als Zahl angeben, z. B. 100 oder 1,5.' };
-  if (![999, 995, 950, 916, 900, 875, 750, 585, 333].includes(purity)) return { error: 'Ungültiger Feingehalt.' };
+  if (count == null || count <= 0 || count > 100000 || Math.round(count) !== count) return { error: 'Anzahl bitte als ganze Zahl, z. B. 20.' };
+  if (![1000, 999, 995, 958, 950, 925, 916, 900, 875, 835, 800, 750, 625, 585, 333].includes(purity)) return { error: 'Ungültiger Feingehalt.' };
   if (!['bar', 'coin', 'jewelry', 'other'].includes(form)) return { error: 'Ungültige Form.' };
-  const grams = unit === 'oz' ? qty * 31.1034768 : unit === 'tola' ? qty * 11.6638038 : qty;
+  const grams = (unit === 'oz' ? qty * 31.1034768 : unit === 'tola' ? qty * 11.6638038 : unit === 'kg' ? qty * 1000 : qty) * count;
   try {
     await db(s).run((q) => q('insert into gold_holdings (user_id, label, grams, purity, form, metal) values (auth.uid(), $1, $2, $3, $4, $5)', [label, grams.toFixed(3), purity, form, metal]));
   } catch (e) {

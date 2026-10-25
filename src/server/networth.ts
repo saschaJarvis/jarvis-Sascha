@@ -5,15 +5,17 @@ import { getFx } from './ext';
 import { coinPrices, loadAdaAccount, loadAlgoAccount, loadBtcAccount, loadEthAccount, loadXrpAccount, loadZecAccount, loadAtomAccount, loadXlmAccount, loadLtcAccount, loadDotAccount, loadVetAccount, loadSolAccount, WALLETS_SQL, MANUAL_SQL, MANUAL_SYMBOLS, type ManualRow, type Coin, type PriceCoin } from './wallets';
 import { goldValueUsd, sumParts, toAed, AED_PER_USD } from '@/lib/domain/networth';
 import { portfolioChange } from '@/lib/domain/change';
-import { eurPer, platinumPrice, quote } from './markets';
+import { eurPer, goldDe, platinumPrice, quote, silverPrice, type MetalPrice } from './markets';
 
 const fake = () => process.env.CRYPTO_FAKE === '1' && process.env.AUTH_PROVIDER !== 'supabase';
 
-export interface GoldPrice { usdPerOz: number; source: string }
+export type GoldPrice = MetalPrice;
 
-/** Goldpreis (USD je Feinunze): gold-api.com, Ausweich PAX Gold über CoinGecko (1 PAXG = 1 oz). */
+/** Goldpreis je Feinunze: gold.de (EUR + USD), Ausweich gold-api.com, dann PAX Gold über CoinGecko (1 PAXG = 1 oz). */
 export async function goldPrice(): Promise<GoldPrice | null> {
   if (fake()) return { usdPerOz: 3110.34768, source: 'Test' };
+  const gd = await goldDe();
+  if (gd) return { usdPerOz: gd.gold.usd, eurPerOz: gd.gold.eur, source: 'gold.de' };
   try {
     const r = await fetch('https://api.gold-api.com/price/XAU', { next: { revalidate: 600 }, signal: AbortSignal.timeout(4000) });
     if (r.ok) {
@@ -31,7 +33,7 @@ export async function goldPrice(): Promise<GoldPrice | null> {
 }
 
 export interface AccountRow { id: string; name: string; institution: string | null; currency: string; kind: string; amount_minor: string | null; as_of: string | null }
-export interface GoldRow { id: string; label: string; grams: string; purity: number; form: string; metal: 'gold' | 'platinum' }
+export interface GoldRow { id: string; label: string; grams: string; purity: number; form: string; metal: 'gold' | 'platinum' | 'silver' }
 export interface StockRow { id: string; symbol: string; name: string | null; isin: string | null; quantity: string; label: string; venue: string | null }
 
 export interface NetWorth {
@@ -48,6 +50,7 @@ export interface NetWorth {
   };
   gold: { aed: number; count: number; grams: number; price: GoldPrice | null; rows: Array<GoldRow & { aed: number | null }> };
   platinum: { aed: number; count: number; grams: number; price: GoldPrice | null; rows: Array<GoldRow & { aed: number | null }> };
+  silver: { aed: number; count: number; grams: number; price: GoldPrice | null; rows: Array<GoldRow & { aed: number | null }> };
   stocks: {
     aed: number; count: number; error: boolean;
     change: { aed: number; eur: number | null; pct: number | null; complete: boolean } | null;
@@ -137,13 +140,19 @@ export async function loadNetWorth(s: Session): Promise<NetWorth> {
     const c = portfolioChange([{ valueNow: v.aed, change: p.change24h }]);
     return { coin, amount: v.amount, aed: v.aed, eur: v.eur, priceEur: p.eur, priceAed: p.aed, changePct: p.change24h, changeAed: p.change24h == null ? null : c.abs, source: p.source };
   });
-  const goldOnly = rows.gold.filter((g) => g.metal !== 'platinum');
+  const goldOnly = rows.gold.filter((g) => (g.metal ?? 'gold') === 'gold');
   const platOnly = rows.gold.filter((g) => g.metal === 'platinum');
-  const [gp, pp] = await Promise.all([goldOnly.length ? goldPrice() : null, platinumPrice()]);
-  const goldRows = goldOnly.map((g) => ({ ...g, aed: gp ? goldValueUsd(Number(g.grams), g.purity, gp.usdPerOz) * AED_PER_USD : null }));
+  const silvOnly = rows.gold.filter((g) => g.metal === 'silver');
+  const [gp, pp, sp] = await Promise.all([goldPrice(), platinumPrice(), silverPrice()]);
+  // Wert: Feinunzen × Kurs – in EUR (gold.de) wenn vorhanden, sonst USD
+  const metalAed = (g: GoldRow, p: GoldPrice | null) => !p ? null
+    : p.eurPerOz && eurAed ? (goldValueUsd(Number(g.grams), g.purity, p.eurPerOz) * eurAed) : goldValueUsd(Number(g.grams), g.purity, p.usdPerOz) * AED_PER_USD;
+  const goldRows = goldOnly.map((g) => ({ ...g, aed: metalAed(g, gp) }));
   const gold = sumParts(goldRows.map((g) => g.aed));
-  const platRows = platOnly.map((g) => ({ ...g, aed: pp ? goldValueUsd(Number(g.grams), g.purity, pp.usdPerOz) * AED_PER_USD : null }));
+  const platRows = platOnly.map((g) => ({ ...g, aed: metalAed(g, pp) }));
   const plat = sumParts(platRows.map((g) => g.aed));
+  const silvRows = silvOnly.map((g) => ({ ...g, aed: metalAed(g, sp) }));
+  const silv = sumParts(silvRows.map((g) => g.aed));
 
   // Aktien/ETFs: Kurs (Yahoo) × Stück, in EUR umgerechnet, dann AED
   const stockRows = await Promise.all(rows.stocks.map(async (r) => {
@@ -159,8 +168,8 @@ export async function loadNetWorth(s: Session): Promise<NetWorth> {
   const stocks = sumParts(stockRows.map((r) => r.aed));
   const stockCh = portfolioChange(stockRows.filter((r) => r.aed != null).map((r) => ({ valueNow: r.aed!, change: r.changePct })));
 
-  const total = sumParts([acc.aed, crypto.aed, gold.aed, plat.aed, stocks.aed]);
-  const missing = acc.missing + gold.missing + crypto.missing + plat.missing + stocks.missing;
+  const total = sumParts([acc.aed, crypto.aed, gold.aed, plat.aed, silv.aed, stocks.aed]);
+  const missing = acc.missing + gold.missing + crypto.missing + plat.missing + silv.missing + stocks.missing;
   return {
     eurAed, totalAed: total.aed, totalEur: eurAed ? total.aed / eurAed : null, missing,
     accounts: { aed: acc.aed, count: accRows.length, rows: accRows },
@@ -170,6 +179,7 @@ export async function loadNetWorth(s: Session): Promise<NetWorth> {
     },
     gold: { aed: gold.aed, count: goldOnly.length, grams: goldOnly.reduce((n, g) => n + Number(g.grams), 0), price: gp, rows: goldRows },
     platinum: { aed: plat.aed, count: platOnly.length, grams: platOnly.reduce((n, g) => n + Number(g.grams), 0), price: pp, rows: platRows },
+    silver: { aed: silv.aed, count: silvOnly.length, grams: silvOnly.reduce((n, g) => n + Number(g.grams), 0), price: sp, rows: silvRows },
     stocks: {
       aed: stocks.aed, count: rows.stocks.length, error: stocks.missing > 0, rows: stockRows,
       change: stockRows.some((r) => r.aed != null) ? { aed: stockCh.abs, eur: eurAed ? stockCh.abs / eurAed : null, pct: stockCh.pct, complete: stockCh.complete } : null,

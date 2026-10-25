@@ -125,7 +125,7 @@ function KindsCard({ cfg }: { cfg: AlertConfig }) {
       <Box name="inflow" label="Eingang" hint="Ab 25 € Gegenwert, z. B. nach einem Kauf." />
       <Box name="price" label="Starke Kursbewegung" hint="Dein Krypto-Bestand seit heute früh – nur Kurse, ohne Ein-/Auszahlungen." />
       <label className="flex items-center gap-2 pl-6">ab <input name="pct" defaultValue={String(cfg.pct).replace('.', ',')} inputMode="decimal" className="field w-20 py-1" /> %</label>
-      <Box name="other" label="Aktien & Edelmetalle" hint="Wert deiner Aktien/ETFs, Gold und Platin seit heute früh – nur Kurse." />
+      <Box name="other" label="Aktien & Edelmetalle" hint="Wert deiner Aktien/ETFs, Gold, Silber und Platin seit heute früh – nur Kurse." />
       <label className="flex items-center gap-2 pl-6">ab <input name="opct" defaultValue={String(cfg.otherPct).replace('.', ',')} inputMode="decimal" className="field w-20 py-1" /> %</label>
       <Box name="statement" label="Kontoauszug ausgewertet" hint="Mit Auffälligkeiten aus dem Auszug." />
       <Submit>Speichern</Submit>

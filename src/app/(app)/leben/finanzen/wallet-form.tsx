@@ -78,7 +78,8 @@ export function BalanceForm({ id, label }: { id: string; label: string }) {
   );
 }
 
-export function AddGoldForm({ metal = 'gold' }: { metal?: 'gold' | 'platinum' }) {
+export function AddGoldForm({ metal = 'gold' }: { metal?: 'gold' | 'platinum' | 'silver' }) {
+  const silver = metal === 'silver';
   const [state, action] = useActionState(addGoldAction, undefined);
   const ref = useRef<HTMLFormElement>(null);
   useEffect(() => { if (state?.ok) ref.current?.reset(); }, [state]);
@@ -88,20 +89,26 @@ export function AddGoldForm({ metal = 'gold' }: { metal?: 'gold' | 'platinum' })
       <div className="grid grid-cols-2 gap-2">
         <div className="col-span-2">
           <label className="label" htmlFor={`${metal}-label`}>Bezeichnung</label>
-          <input id={`${metal}-label`} name="label" maxLength={60} className="field" placeholder={metal === 'platinum' ? 'z. B. Platinbarren 1 oz' : 'z. B. Barren 100 g Valcambi'} />
+          <input id={`${metal}-label`} name="label" maxLength={60} className="field" placeholder={metal === 'platinum' ? 'z. B. Platinbarren 1 oz' : silver ? 'z. B. Maple Leaf Silber' : 'z. B. Barren 100 g Valcambi'} />
         </div>
         <div>
-          <label className="label" htmlFor={`${metal}-g-qty`}>Menge</label>
-          <input id={`${metal}-g-qty`} name="qty" required inputMode="decimal" className="field mono" placeholder="100" />
+          <label className="label" htmlFor={`${metal}-g-count`}>Anzahl Stück</label>
+          <input id={`${metal}-g-count`} name="count" inputMode="numeric" className="field mono" placeholder="1" defaultValue="1" />
+        </div>
+        <div>
+          <label className="label" htmlFor={`${metal}-g-qty`}>Gewicht je Stück</label>
+          <input id={`${metal}-g-qty`} name="qty" required inputMode="decimal" className="field mono" placeholder={silver ? '1' : '100'} />
         </div>
         <div>
           <label className="label" htmlFor={`${metal}-g-unit`}>Einheit</label>
-          <select id={`${metal}-g-unit`} name="unit" className="field" defaultValue="g"><option value="g">Gramm</option><option value="oz">Unzen (oz)</option><option value="tola">Tola</option></select>
+          <select id={`${metal}-g-unit`} name="unit" className="field" defaultValue={silver ? 'oz' : 'g'}><option value="g">Gramm</option><option value="oz">Unzen (oz)</option><option value="kg">Kilogramm</option><option value="tola">Tola</option></select>
         </div>
         <div>
           <label className="label" htmlFor={`${metal}-g-pur`}>Feingehalt</label>
           <select id={`${metal}-g-pur`} name="purity" className="field" defaultValue="999">
-            {metal === 'platinum'
+            {silver
+              ? <><option value="999">999 (Münzen/Barren)</option><option value="958">958 (Britannia bis 2012)</option><option value="925">925 (Sterling)</option><option value="900">900</option><option value="835">835</option><option value="800">800</option><option value="625">625 (alte 5/10 DM)</option></>
+              : metal === 'platinum'
               ? <><option value="999">999,5 (Barren/Münze)</option><option value="950">950 (Schmuck)</option><option value="900">900</option></>
               : <><option value="999">999,9 (24 K)</option><option value="995">995</option><option value="916">916 (22 K)</option>
                 <option value="875">875 (21 K)</option><option value="750">750 (18 K)</option><option value="585">585 (14 K)</option><option value="333">333 (8 K)</option></>}
@@ -109,10 +116,10 @@ export function AddGoldForm({ metal = 'gold' }: { metal?: 'gold' | 'platinum' })
         </div>
         <div>
           <label className="label" htmlFor={`${metal}-g-form`}>Form</label>
-          <select id={`${metal}-g-form`} name="form" className="field" defaultValue="bar"><option value="bar">Barren</option><option value="coin">Münze</option><option value="jewelry">Schmuck</option><option value="other">Sonstiges</option></select>
+          <select id={`${metal}-g-form`} name="form" className="field" defaultValue={silver ? 'coin' : 'bar'}><option value="bar">Barren</option><option value="coin">Münze</option><option value="jewelry">Schmuck</option><option value="other">Sonstiges</option></select>
         </div>
       </div>
-      <Submit>{metal === 'platinum' ? 'Platin hinzufügen' : 'Gold hinzufügen'}</Submit>
+      <Submit>{metal === 'platinum' ? 'Platin hinzufügen' : silver ? 'Silber hinzufügen' : 'Gold hinzufügen'}</Submit>
       <ErrorNote error={state?.error} /><OkNote message={state?.ok} />
     </form>
   );

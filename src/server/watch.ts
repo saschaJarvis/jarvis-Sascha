@@ -1,7 +1,7 @@
 import 'server-only';
 import { withService } from './db';
 import { goldPrice, walletAssets, type Asset } from './networth';
-import { eurPer, platinumPrice, quote } from './markets';
+import { eurPer, platinumPrice, quote, silverPrice } from './markets';
 import { goldValueUsd } from '@/lib/domain/networth';
 import { coinPrices, MANUAL_SYMBOLS, type Coin, type PriceCoin } from './wallets';
 import { AED_PER_USD } from '@/lib/domain/networth';
@@ -109,7 +109,7 @@ export async function runWatch(): Promise<{ users: number; alerts: number; sent:
             const ok = await queueAlert(u.user_id, {
               kind: 'price', severity: up ? 'info' : 'warn', url: '/leben/finanzen',
               title: `Aktien & Edelmetalle ${up ? '▲ +' : '▼ −'}${nf(Math.abs(ch) * 100, 1)} % heute`,
-              body: `Aktien, Gold und Platin zusammen seit heute früh: ${nf(then, 0)} € → ${nf(now, 0)} € (${up ? '+' : '−'}${nf(Math.abs(now - then), 0)} €). Nur Kursbewegung.`,
+              body: `Aktien, Gold, Silber und Platin zusammen seit heute früh: ${nf(then, 0)} € → ${nf(now, 0)} € (${up ? '+' : '−'}${nf(Math.abs(now - then), 0)} €). Nur Kursbewegung.`,
               dedupKey: `other:${day}:${up ? 'up' : 'down'}`,
             });
             if (ok) alerts++;
@@ -156,13 +156,14 @@ async function otherHoldings(userId: string, eurAed: number | null): Promise<Arr
   ]);
   const out: Array<{ key: string; price: number; eur: number }> = [];
   const usdEur = eurAed ? AED_PER_USD / eurAed : null;
-  for (const metal of ['gold', 'platinum'] as const) {
+  for (const metal of ['gold', 'platinum', 'silver'] as const) {
     const rows = metals.filter((m) => (m.metal ?? 'gold') === metal);
     if (!rows.length || !usdEur) continue;
-    const p = await (metal === 'gold' ? goldPrice() : platinumPrice()).catch(() => null);
+    const p = await (metal === 'gold' ? goldPrice() : metal === 'silver' ? silverPrice() : platinumPrice()).catch(() => null);
     if (!p) continue;
     const usd = rows.reduce((n, r) => n + goldValueUsd(Number(r.grams), r.purity, p.usdPerOz), 0);
-    out.push({ key: `metal:${metal}`, price: p.usdPerOz, eur: usd * usdEur });
+    const eur = p.eurPerOz ? rows.reduce((n, r) => n + goldValueUsd(Number(r.grams), r.purity, p.eurPerOz!), 0) : usd * usdEur;
+    out.push({ key: `metal:${metal}:${p.eurPerOz ? 'eur' : 'usd'}`, price: p.eurPerOz ?? p.usdPerOz, eur });
   }
   const bySym = new Map<string, number>();
   for (const s of stocks) bySym.set(s.symbol, (bySym.get(s.symbol) ?? 0) + Number(s.quantity));
