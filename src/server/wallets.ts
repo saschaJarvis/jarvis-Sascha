@@ -1,6 +1,6 @@
 import 'server-only';
 import { DROPS_PER_XRP, toMove, type XrpMove } from '@/lib/crypto/xrp';
-import { balanceOfData, ETH_TOKENS, fromUnits } from '@/lib/crypto/eth';
+import { balanceOfData, decodeAbiString, ETH_TOKENS, fromUnits } from '@/lib/crypto/eth';
 import { SATS_PER_BTC } from '@/lib/crypto/btc';
 import { LOVELACE_PER_ADA, stakeAddressOf } from '@/lib/crypto/ada';
 import { ALGO_STABLES, MICRO_PER_ALGO } from '@/lib/crypto/algo';
@@ -94,6 +94,8 @@ export async function loadXrpAccount(address: string): Promise<XrpAccount> {
 }
 
 export type Coin = 'xrp' | 'eth' | 'btc' | 'ada' | 'algo';
+/** Kurs-Kürzel: Ketten + Tokens mit eigenem Kurs (z. B. Quant auf Ethereum) */
+export type PriceCoin = Coin | 'qnt';
 
 /** Alle Wallets des Nutzers (je Kette eine Tabelle, nur öffentliche Adressen). */
 export const WALLETS_SQL = `select id, chain, address, label, created_at from (
@@ -102,9 +104,9 @@ export const WALLETS_SQL = `select id, chain, address, label, created_at from (
   union all select id, 'btc'::text, address, label, created_at from btc_wallets where deleted_at is null
   union all select id, 'ada'::text, address, label, created_at from ada_wallets where deleted_at is null
   union all select id, 'algo'::text, address, label, created_at from algo_wallets where deleted_at is null) w order by created_at`;
-const GECKO: Record<Coin, string> = { xrp: 'ripple', eth: 'ethereum', btc: 'bitcoin', ada: 'cardano', algo: 'algorand' };
+const GECKO: Record<PriceCoin, string> = { xrp: 'ripple', eth: 'ethereum', btc: 'bitcoin', ada: 'cardano', algo: 'algorand', qnt: 'quant-network' };
 
-const KRAKEN_PAIR: Record<Coin, string> = { btc: 'XBT', eth: 'ETH', xrp: 'XRP', ada: 'ADA', algo: 'ALGO' };
+const KRAKEN_PAIR: Record<PriceCoin, string> = { btc: 'XBT', eth: 'ETH', xrp: 'XRP', ada: 'ADA', algo: 'ALGO', qnt: 'QNT' };
 const PRICE_TTL = 20; // Sekunden – „quasi Echtzeit“; Kraken erlaubt ~1 Abfrage/s je IP
 
 /**
@@ -112,12 +114,12 @@ const PRICE_TTL = 20; // Sekunden – „quasi Echtzeit“; Kraken erlaubt ~1 Ab
  * letzter Handelspreis in EUR und USD, dazu die 24-h-Veränderung aus Stundenkerzen.
  * Ausweich: CoinGecko (Durchschnitt mehrerer Börsen, inkl. 24-h-Änderung). AED über die USD-Bindung.
  */
-export async function coinPrices(coins: readonly Coin[] = ['xrp', 'eth', 'btc', 'ada', 'algo']): Promise<Partial<Record<Coin, Price>>> {
+export async function coinPrices(coins: readonly PriceCoin[] = ['xrp', 'eth', 'btc', 'ada', 'algo', 'qnt']): Promise<Partial<Record<PriceCoin, Price>>> {
   if (fake()) {
     const t = (eur: number, usd: number, change24h: number) => ({ eur, usd, aed: usd * AED_PER_USD, source: 'Test', at: new Date(), change24h });
-    return { xrp: t(2, 2.2, 0.1), eth: t(3000, 3300, -0.02), btc: t(90000, 100000, 0.01), ada: t(0.6, 0.7, 0), algo: t(0.2, 0.22, 0.05) };
+    return { xrp: t(2, 2.2, 0.1), eth: t(3000, 3300, -0.02), btc: t(90000, 100000, 0.01), ada: t(0.6, 0.7, 0), algo: t(0.2, 0.22, 0.05), qnt: t(80, 90, -0.03) };
   }
-  const out: Partial<Record<Coin, Price>> = {};
+  const out: Partial<Record<PriceCoin, Price>> = {};
   if (!coins.length) return out;
   try {
     const pairs = coins.flatMap((c) => [`${KRAKEN_PAIR[c]}EUR`, `${KRAKEN_PAIR[c]}USD`]).join(',');
@@ -125,7 +127,7 @@ export async function coinPrices(coins: readonly Coin[] = ['xrp', 'eth', 'btc', 
     const j = (await r.json()) as { error?: string[]; result?: Record<string, { c?: [string]; altname?: string }> };
     const entries = Object.entries(j.result ?? {});
     // Kraken liefert Schlüssel wie XXBTZEUR/XETHZEUR/ADAEUR – über Basis-Kürzel und Quote zuordnen
-    const find = (c: Coin, q: 'EUR' | 'USD') => {
+    const find = (c: PriceCoin, q: 'EUR' | 'USD') => {
       const base = KRAKEN_PAIR[c];
       const e = entries.find(([k]) => k.endsWith(q) && (k.startsWith(base) || k.startsWith(`X${base}`)));
       const v = Number(e?.[1].c?.[0]);
@@ -185,10 +187,15 @@ async function ethRpc(method: string, params: unknown[]): Promise<string> {
   throw new Error(last);
 }
 
-export interface EthAccount { address: string; eth: number; tokens: Array<{ symbol: string; amount: number }>; error?: string }
+/** Betriebscheck: symbol() eines Token-Vertrags abfragen (bestätigt die hinterlegte Vertragsadresse). */
+export async function ethTokenSymbol(contract: string): Promise<string | null> {
+  try { return decodeAbiString(await ethRpc('eth_call', [{ to: contract, data: '0x95d89b41' }, 'latest'])); } catch { return null; }
+}
+
+export interface EthAccount { address: string; eth: number; tokens: Array<{ symbol: string; amount: number; price: PriceCoin | 'usd' }>; error?: string }
 
 export async function loadEthAccount(address: string): Promise<EthAccount> {
-  if (fake()) return { address, eth: 1.5, tokens: [{ symbol: 'USDC', amount: 500 }] };
+  if (fake()) return { address, eth: 1.5, tokens: [{ symbol: 'USDC', amount: 500, price: 'usd' }, { symbol: 'QNT', amount: 10, price: 'qnt' }] };
   return cached(`eth:${address.toLowerCase()}`, 120_000, async () => {
     try {
       const [wei, ...tok] = await Promise.all([
@@ -197,7 +204,7 @@ export async function loadEthAccount(address: string): Promise<EthAccount> {
       ]);
       return {
         address, eth: fromUnits(wei, 18),
-        tokens: ETH_TOKENS.map((t, i) => ({ symbol: t.symbol, amount: tok[i] ? fromUnits(tok[i]!, t.decimals) : NaN })).filter((t) => t.amount !== 0),
+        tokens: ETH_TOKENS.map((t, i) => ({ symbol: t.symbol, price: t.price as PriceCoin | 'usd', amount: tok[i] ? fromUnits(tok[i]!, t.decimals) : NaN })).filter((t) => t.amount !== 0),
       };
     } catch (e) {
       console.error('[eth]', (e as Error).message);

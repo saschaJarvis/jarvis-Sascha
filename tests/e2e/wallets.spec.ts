@@ -39,7 +39,7 @@ test('Krypto nur ansehen: Seed wird abgewiesen, Tippfehler erkannt, Adresse zeig
   await expect(page.getByText(/„Ledger ETH“ hinzugefügt/)).toBeVisible();
   await page.reload();
   await expect(page.getByText('1,5000 ETH', { exact: true })).toBeVisible();
-  await expect(page.getByText('+ 500,00 USDC')).toBeVisible();
+  await expect(page.getByText('+ 500,00 USDC · + 10,0000 QNT')).toBeVisible();
   await expect(page.getByRole('link', { name: /0x11A4…7886/ })).toHaveAttribute('href', /etherscan\.io\/address\/0x11A4/);
 
   // Bitcoin: WIF-Privatschlüssel abgewiesen, Prüfsumme geprüft, P2SH-Adresse angenommen
@@ -86,6 +86,7 @@ test('Krypto nur ansehen: Seed wird abgewiesen, Tippfehler erkannt, Adresse zeig
   await expect(row('XRP')).toContainText('+10,00 %');
   await expect(row('ETH')).toContainText('−2,00 %');
   await expect(row('ADA')).toContainText('±0,00 %');
+  await expect(row('QNT')).toContainText('−3,00 %');
   // € erscheint nur mit EZB-Kurs (offline in Tests nicht verfügbar) – AED immer
   await expect(page.getByText(/^▲ \+\d+,\d{2} %( · \+[\d.]+ €)? · \+[\d.]+ AED$/).first()).toBeVisible();
 });

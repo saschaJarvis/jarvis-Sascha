@@ -2,7 +2,7 @@ import 'server-only';
 import { db } from './repo';
 import type { Session } from './auth';
 import { getFx } from './ext';
-import { coinPrices, loadAdaAccount, loadAlgoAccount, loadBtcAccount, loadEthAccount, loadXrpAccount, WALLETS_SQL, type Coin } from './wallets';
+import { coinPrices, loadAdaAccount, loadAlgoAccount, loadBtcAccount, loadEthAccount, loadXrpAccount, WALLETS_SQL, type Coin, type PriceCoin } from './wallets';
 import { goldValueUsd, sumParts, toAed, AED_PER_USD } from '@/lib/domain/networth';
 import { portfolioChange } from '@/lib/domain/change';
 
@@ -41,7 +41,7 @@ export interface NetWorth {
   crypto: {
     aed: number; count: number; holdings: Partial<Record<string, number>>; error: boolean;
     change: { aed: number; eur: number | null; pct: number | null; complete: boolean } | null;
-    coins: Array<{ coin: Coin; amount: number; aed: number; eur: number; priceEur: number; priceAed: number; changePct: number | null; changeAed: number | null; source: string }>;
+    coins: Array<{ coin: PriceCoin; amount: number; aed: number; eur: number; priceEur: number; priceAed: number; changePct: number | null; changeAed: number | null; source: string }>;
     asOf: Date;
   };
   gold: { aed: number; count: number; grams: number; price: GoldPrice | null; rows: Array<GoldRow & { aed: number | null }> };
@@ -63,51 +63,53 @@ export async function loadNetWorth(s: Session): Promise<NetWorth> {
   const accRows = rows.accounts.map((a) => ({ ...a, aed: a.amount_minor == null ? 0 : toAed(Number(a.amount_minor) / 100, a.currency, eurAed) }));
   const acc = sumParts(accRows.map((a) => a.aed));
 
-  const chains = [...new Set(rows.wallets.map((w) => w.chain))];
-  const [views, prices] = await Promise.all([
-    Promise.all(rows.wallets.map(async (w) => {
-      if (w.chain === 'algo') {
-        const a = await loadAlgoAccount(w.address);
-        return { error: !!a.error, native: { coin: 'algo' as Coin, amount: a.algo }, stable: a.tokens.reduce((n, t) => n + t.amount, 0), tokens: a.tokens };
-      }
-      if (w.chain === 'ada') {
-        const a = await loadAdaAccount(w.address);
-        return { error: !!a.error, native: { coin: 'ada' as Coin, amount: a.ada }, stable: 0, tokens: [] as Array<{ symbol: string; amount: number }> };
-      }
-      if (w.chain === 'btc') {
-        const a = await loadBtcAccount(w.address);
-        return { error: !!a.error, native: { coin: 'btc' as Coin, amount: a.btc }, stable: 0, tokens: [] as Array<{ symbol: string; amount: number }> };
-      }
-      if (w.chain === 'eth') {
-        const a = await loadEthAccount(w.address);
-        return { error: !!a.error, native: { coin: 'eth' as Coin, amount: a.eth }, stable: a.tokens.reduce((n, t) => n + (Number.isFinite(t.amount) ? t.amount : 0), 0), tokens: a.tokens };
-      }
-      const a = await loadXrpAccount(w.address);
-      return { error: !!a.error, native: { coin: 'xrp' as Coin, amount: a.xrp }, stable: 0, tokens: [] as Array<{ symbol: string; amount: number }> };
-    })),
-    coinPrices(chains),
-  ]);
+  // Jede Wallet → Liste von Beständen: Hauptwährung + Tokens. price 'usd' = Stablecoin (1 USD).
+  type Asset = { symbol: string; amount: number; price: PriceCoin | 'usd' };
+  const views: Array<{ error: boolean; assets: Asset[] }> = await Promise.all(rows.wallets.map(async (w) => {
+    if (w.chain === 'algo') {
+      const a = await loadAlgoAccount(w.address);
+      return { error: !!a.error, assets: [{ symbol: 'ALGO', amount: a.algo, price: 'algo' as const }, ...a.tokens.map((t) => ({ ...t, price: 'usd' as const }))] };
+    }
+    if (w.chain === 'ada') { const a = await loadAdaAccount(w.address); return { error: !!a.error, assets: [{ symbol: 'ADA', amount: a.ada, price: 'ada' as const }] }; }
+    if (w.chain === 'btc') { const a = await loadBtcAccount(w.address); return { error: !!a.error, assets: [{ symbol: 'BTC', amount: a.btc, price: 'btc' as const }] }; }
+    if (w.chain === 'eth') { const a = await loadEthAccount(w.address); return { error: !!a.error, assets: [{ symbol: 'ETH', amount: a.eth, price: 'eth' as const }, ...a.tokens] }; }
+    const a = await loadXrpAccount(w.address);
+    return { error: !!a.error, assets: [{ symbol: 'XRP', amount: a.xrp, price: 'xrp' as const }] };
+  }));
+  const needed = [...new Set(views.flatMap((v) => v.assets.map((x) => x.price)).filter((p): p is PriceCoin => p !== 'usd'))];
+  const prices = await coinPrices(needed);
+  const priceAed = (x: Asset) => (x.price === 'usd' ? AED_PER_USD : prices[x.price]?.aed ?? null);
+
   const holdings: Partial<Record<string, number>> = {};
   const cryptoVals = views.map((v) => {
-    const sym = v.native.coin.toUpperCase();
-    holdings[sym] = (holdings[sym] ?? 0) + (Number.isFinite(v.native.amount) ? v.native.amount : 0); // auch 0 zeigen
-    for (const t of v.tokens) if (Number.isFinite(t.amount)) holdings[t.symbol] = (holdings[t.symbol] ?? 0) + t.amount;
-    const p = prices[v.native.coin];
-    if (v.error || !p) return null;
-    return v.native.amount * p.aed + v.stable * AED_PER_USD;
+    let sum = 0;
+    for (const x of v.assets) {
+      const ok = Number.isFinite(x.amount);
+      if (x.price !== 'usd' || ok) holdings[x.symbol] = (holdings[x.symbol] ?? 0) + (ok ? x.amount : 0); // Hauptwährung auch mit 0 zeigen
+    }
+    if (v.error) return null;
+    for (const x of v.assets) {
+      if (!Number.isFinite(x.amount)) continue;
+      const pa = priceAed(x);
+      if (pa == null) return null;
+      sum += x.amount * pa;
+    }
+    return sum;
   });
   const crypto = sumParts(cryptoVals);
   // 24-h-Veränderung: Kurswert je Coin mit seiner Änderung; Stablecoins ohne Änderung
-  const perCoin: Partial<Record<Coin, { amount: number; aed: number; eur: number }>> = {};
-  const changeItems = views.flatMap((v) => {
-    const p = prices[v.native.coin];
-    if (v.error || !p) return [];
-    const pc = (perCoin[v.native.coin] ??= { amount: 0, aed: 0, eur: 0 });
-    pc.amount += v.native.amount; pc.aed += v.native.amount * p.aed; pc.eur += v.native.amount * p.eur;
-    return [{ valueNow: v.native.amount * p.aed, change: p.change24h }, ...(v.stable ? [{ valueNow: v.stable * AED_PER_USD, change: 0 }] : [])];
-  });
+  const perCoin: Partial<Record<PriceCoin, { amount: number; aed: number; eur: number }>> = {};
+  const changeItems = views.flatMap((v) => (v.error ? [] : v.assets.flatMap((x) => {
+    if (!Number.isFinite(x.amount) || x.amount === 0 && x.price === 'usd') return [];
+    if (x.price === 'usd') return [{ valueNow: x.amount * AED_PER_USD, change: 0 }];
+    const p = prices[x.price];
+    if (!p) return [];
+    const pc = (perCoin[x.price] ??= { amount: 0, aed: 0, eur: 0 });
+    pc.amount += x.amount; pc.aed += x.amount * p.aed; pc.eur += x.amount * p.eur;
+    return [{ valueNow: x.amount * p.aed, change: p.change24h }];
+  })));
   const ch = portfolioChange(changeItems);
-  const coins = (Object.entries(perCoin) as Array<[Coin, { amount: number; aed: number; eur: number }]>).map(([coin, v]) => {
+  const coins = (Object.entries(perCoin) as Array<[PriceCoin, { amount: number; aed: number; eur: number }]>).map(([coin, v]) => {
     const p = prices[coin]!;
     const c = portfolioChange([{ valueNow: v.aed, change: p.change24h }]);
     return { coin, amount: v.amount, aed: v.aed, eur: v.eur, priceEur: p.eur, priceAed: p.aed, changePct: p.change24h, changeAed: p.change24h == null ? null : c.abs, source: p.source };

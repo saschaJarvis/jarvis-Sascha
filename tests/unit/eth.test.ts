@@ -21,3 +21,10 @@ test('ETH: Einheiten und balanceOf-Aufruf', () => {
   assert.equal(fromUnits('0x', 18), 0);
   assert.equal(balanceOfData('0x11A429C59856c4bF5fB029B7c1d7139456357886'), '0x70a0823100000000000000000000000011a429c59856c4bf5fb029b7c1d7139456357886');
 });
+
+test('ETH: ABI-String dekodieren (symbol())', async () => {
+  const { decodeAbiString } = await import('../../src/lib/crypto/eth');
+  const hex = '0x' + '20'.padStart(64, '0') + '3'.padStart(64, '0') + Buffer.from('QNT').toString('hex').padEnd(64, '0');
+  assert.equal(decodeAbiString(hex), 'QNT');
+  assert.equal(decodeAbiString('0x'), null);
+});

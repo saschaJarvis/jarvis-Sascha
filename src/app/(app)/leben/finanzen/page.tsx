@@ -1,6 +1,6 @@
 import { requireUser } from '@/server/auth';
 import { db } from '@/server/repo';
-import { coinPrices, loadAdaAccount, loadAlgoAccount, loadBtcAccount, loadEthAccount, loadXrpAccount, WALLETS_SQL, type AdaAccount, type AlgoAccount, type BtcAccount, type Coin, type EthAccount, type XrpAccount } from '@/server/wallets';
+import { coinPrices, loadAdaAccount, loadAlgoAccount, loadBtcAccount, loadEthAccount, loadXrpAccount, WALLETS_SQL, type AdaAccount, type AlgoAccount, type BtcAccount, type Coin, type EthAccount, type PriceCoin, type XrpAccount } from '@/server/wallets';
 import { AED_PER_USD } from '@/lib/domain/networth';
 import { PageTitle, Section } from '@/components/ui';
 import { timeAgo } from '@/lib/news';
@@ -26,7 +26,7 @@ export default async function FinancePage() {
     WALLETS_SQL));
   const [views, prices, nw] = await Promise.all([
     Promise.all(wallets.map((w): Promise<XrpAccount | EthAccount | BtcAccount | AdaAccount | AlgoAccount> => (w.chain === 'eth' ? loadEthAccount(w.address) : w.chain === 'btc' ? loadBtcAccount(w.address) : w.chain === 'ada' ? loadAdaAccount(w.address) : w.chain === 'algo' ? loadAlgoAccount(w.address) : loadXrpAccount(w.address)))),
-    coinPrices([...new Set(wallets.map((w) => w.chain))]),
+    coinPrices([...new Set<PriceCoin>([...wallets.map((w) => w.chain), ...(wallets.some((w) => w.chain === 'eth') ? ['qnt' as const] : [])])]),
     loadNetWorth(s),
   ]);
   const EXPLORER: Record<Coin, (a: string) => string> = { xrp: (a) => `https://livenet.xrpl.org/accounts/${a}`, eth: (a) => `https://etherscan.io/address/${a}`, btc: (a) => `https://mempool.space/address/${a}`, ada: (a) => `https://cardanoscan.io/address/${a}`, algo: (a) => `https://allo.info/account/${a}` };
@@ -94,7 +94,7 @@ export default async function FinancePage() {
         </div>
       </Section>
 
-      <Section title="Krypto · nur ansehen" aside={<span className="mono text-xs text-muted">{(Object.entries(prices) as Array<[Coin, { eur: number }]>).map(([c, p]) => `1 ${c.toUpperCase()} = ${nf(p.eur, c === 'xrp' || c === 'ada' ? 4 : 0)} €`).join(' · ')}</span>}>
+      <Section title="Krypto · nur ansehen" aside={<span className="mono text-xs text-muted">{(Object.entries(prices) as Array<[PriceCoin, { eur: number }]>).map(([c, p]) => `1 ${c.toUpperCase()} = ${nf(p.eur, p.eur < 10 ? 4 : 0)} €`).join(' · ')}</span>}>
         <p className="notice notice-info mb-3 text-sm">
           🔒 Jarvis kennt nur deine <strong>öffentliche Adresse</strong> und kann damit nichts versenden. Deine 24 Wörter, PIN oder dein Ledger werden nie gebraucht – wer danach fragt, will dich betrügen.
         </p>
@@ -103,7 +103,7 @@ export default async function FinancePage() {
           <div className="card mb-3 grid gap-1">
             <p className="eyebrow">Krypto gesamt</p>
             <p className="text-2xl font-bold">{nf(nw.crypto.aed, 0)} AED</p>
-            <p className="text-muted">{nw.eurAed ? `≈ ${nf(nw.crypto.aed / nw.eurAed, 0)} € · ` : ''}{Object.entries(nw.crypto.holdings).filter(([, v]) => v != null).sort(([a], [b]) => ['BTC', 'ETH', 'XRP', 'ADA', 'ALGO', 'USDT', 'USDC'].indexOf(a) - ['BTC', 'ETH', 'XRP', 'ADA', 'ALGO', 'USDT', 'USDC'].indexOf(b)).map(([k, v]) => `${nf(v ?? 0, k === 'BTC' ? 8 : k === 'ETH' ? 4 : 2)} ${k}`).join(' · ')}</p>
+            <p className="text-muted">{nw.eurAed ? `≈ ${nf(nw.crypto.aed / nw.eurAed, 0)} € · ` : ''}{Object.entries(nw.crypto.holdings).filter(([, v]) => v != null).sort(([a], [b]) => ['BTC', 'ETH', 'XRP', 'ADA', 'ALGO', 'QNT', 'USDT', 'USDC'].indexOf(a) - ['BTC', 'ETH', 'XRP', 'ADA', 'ALGO', 'QNT', 'USDT', 'USDC'].indexOf(b)).map(([k, v]) => `${nf(v ?? 0, k === 'BTC' ? 8 : k === 'ETH' ? 4 : 2)} ${k}`).join(' · ')}</p>
             {nw.crypto.error && <p className="text-sm text-warn">Ein Teil ist gerade ohne Kurs oder Netz – nicht mitgezählt.</p>}
             {nw.crypto.change && <div className="mt-1"><CryptoChange ch={nw.crypto.change} asOf={nw.crypto.asOf} label="24 h" /></div>}
             {nw.crypto.coins.length > 0 && (
@@ -146,7 +146,8 @@ export default async function FinancePage() {
             const c = w.chain === 'ada' ? (v as AdaAccount) : null;
             const g = w.chain === 'algo' ? (v as AlgoAccount) : null;
             const amount = x ? x.xrp : e ? e.eth : b ? b.btc : c ? c.ada : g!.algo;
-            const stableUsd = e ? e.tokens.reduce((n, t) => n + (Number.isFinite(t.amount) ? t.amount : 0), 0) : 0;
+            // Token-Wert in €: Stablecoins = 1 USD, andere (z. B. QNT) zum eigenen Kurs
+            const tokenEur = e && nw.eurAed ? e.tokens.reduce((n, t) => n + (!Number.isFinite(t.amount) ? 0 : t.price === 'usd' ? (t.amount * AED_PER_USD) / nw.eurAed! : t.amount * (prices[t.price]?.eur ?? 0)), 0) : 0;
             return (
               <li key={w.id} className="card grid gap-2">
                 <div className="flex items-start justify-between gap-3">
@@ -159,14 +160,14 @@ export default async function FinancePage() {
                       : x && !x.activated ? <p className="text-sm text-muted">Noch nicht aktiviert (0 XRP)</p>
                       : <>
                         <p className="text-lg font-bold">{nf(amount, DEC[w.chain])} {sym}</p>
-                        {p && <p className="text-sm text-muted">≈ {nf(amount * p.eur + (nw.eurAed ? (stableUsd * AED_PER_USD) / nw.eurAed : 0))} €</p>}
+                        {p && <p className="text-sm text-muted">≈ {nf(amount * p.eur + tokenEur)} €</p>}
                       </>}
                   </div>
                 </div>
                 {e && e.tokens.length > 0 && !e.error && (
-                  <p className="text-sm">{e.tokens.map((t) => Number.isFinite(t.amount) ? `+ ${nf(t.amount, 2)} ${t.symbol}` : `${t.symbol}: nicht abrufbar`).join(' · ')}</p>
+                  <p className="text-sm">{e.tokens.map((t) => Number.isFinite(t.amount) ? `+ ${nf(t.amount, t.price === 'usd' ? 2 : 4)} ${t.symbol}` : `${t.symbol}: nicht abrufbar`).join(' · ')}</p>
                 )}
-                {e && !e.error && <p className="text-xs text-muted">Gezählt: ETH, USDT und USDC. Andere Tokens/NFTs siehst du über den Etherscan-Link.</p>}
+                {e && !e.error && <p className="text-xs text-muted">Gezählt: ETH, Quant (QNT), USDT und USDC. Andere Tokens/NFTs siehst du über den Etherscan-Link.</p>}
                 {g && !g.error && (
                   <p className="text-xs text-muted">
                     {g.tokens.length ? `${g.tokens.map((t) => `+ ${nf(t.amount, 2)} ${t.symbol}`).join(' · ')} · ` : ''}Davon {nf(g.minBalance, 2)} ALGO als Mindestguthaben gebunden.{g.online ? ' Nimmt am Konsens teil (Staking).' : ''}
