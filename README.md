@@ -75,6 +75,7 @@ Legende: **TESTED** = gebaut und automatisch getestet · **IMPLEMENTED** = gebau
 | Immobilie | Schema mit Gewissheit je Angabe, LTV-Plausibilität (CBUAE) | TESTED |
 | Immobilie | Dubai-Seite: Angaben mit „vermutet“, LTV-Warnung mit Quelle, Foto-Platzhalter, Unterlagen-Liste | IMPLEMENTED |
 | Datenschutz | Export eigener Daten (Step-up), Löschanfrage mit Karenz | TESTED (DB) / IMPLEMENTED (UI) |
+| Kalender | Wochenkalender mit Reitern Mo–So (Aufgaben + Termine), iPhone/iCloud-, Google-, Outlook-Kalender per veröffentlichtem iCal-Link (nur lesend, Host-Allowlist, Wiederholungen/Zeitzonen) | TESTED (Unit + DB + E2E mit Test-Kalender) |
 | Inbox | Gmail/Outlook OAuth, Triage, Prompt-Injection-Schutz | PLANNED (P3) |
 | Umzug | Recherche DE/UAE mit Quellen und 22 App-Regeln | IMPLEMENTED (Dokument) |
 | Umzug | Checkliste/Abhängigkeitsvorlagen in der App | PLANNED |

@@ -2,12 +2,13 @@
 import Link from 'next/link';
 import { useRef, useState } from 'react';
 
-export interface CalItem { id: string; title: string; time: string | null; domain: string; overdue: boolean; hard: boolean }
+import type { CalItem } from '@/lib/calendar';
+export type { CalItem };
 export interface CalDay { key: number; wd: string; wdLong: string; date: string; isToday: boolean; isPast: boolean; items: CalItem[] }
 export interface CalWeek { offset: number; label: string; days: CalDay[] }
 
 /** Wochenkalender mit Reitern Mo–So; Pfeile blättern zwischen den Wochen (ohne Neuladen). */
-export function WeekCalendar({ weeks, domainLabel }: { weeks: CalWeek[]; domainLabel: Record<string, string> }) {
+export function WeekCalendar({ weeks, domainLabel, hasSources = true }: { weeks: CalWeek[]; domainLabel: Record<string, string>; hasSources?: boolean }) {
   const startIdx = Math.max(0, weeks.findIndex((w) => w.offset === 0));
   const [wi, setWi] = useState(startIdx);
   const week = weeks[wi];
@@ -69,15 +70,25 @@ export function WeekCalendar({ weeks, domainLabel }: { weeks: CalWeek[]; domainL
           <ol className="grid gap-1.5">
             {day.items.map((t) => (
               <li key={t.id}>
-                <Link href={`/aufgaben/${t.id}`} className={`flex items-start gap-3 border-l-2 bg-card/40 px-3 py-2 hover:bg-sea-soft/40 ${t.overdue ? 'border-bad' : t.hard ? 'border-warn' : 'border-sea'}`}>
-                  <span className={`mono w-14 shrink-0 pt-0.5 text-[.72rem] ${t.overdue ? 'text-bad' : 'text-sea'}`}>{t.time ?? 'ganzt.'}</span>
-                  <span className="min-w-0 flex-1">
-                    <span className="block leading-snug">{t.title}</span>
-                    <span className="mono text-[.6rem] uppercase tracking-wider text-muted">
-                      {domainLabel[t.domain] ?? t.domain}{t.hard ? ' · feste Frist' : ''}{t.overdue ? ' · überfällig' : ''}
+                {t.kind === 'event' ? (
+                  <div className="flex items-start gap-3 border-l-2 border-good bg-good-soft/30 px-3 py-2">
+                    <span className="mono w-14 shrink-0 pt-0.5 text-[.72rem] text-good">{t.time ?? 'ganzt.'}{t.endTime && <span className="block text-[.62rem] text-muted">– {t.endTime}</span>}</span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block leading-snug">{t.title}</span>
+                      <span className="mono text-[.6rem] uppercase tracking-wider text-muted">◷ {t.source ?? 'Kalender'}{t.location ? ` · ${t.location}` : ''}</span>
                     </span>
-                  </span>
-                </Link>
+                  </div>
+                ) : (
+                  <Link href={`/aufgaben/${t.id}`} className={`flex items-start gap-3 border-l-2 bg-card/40 px-3 py-2 hover:bg-sea-soft/40 ${t.overdue ? 'border-bad' : t.hard ? 'border-warn' : 'border-sea'}`}>
+                    <span className={`mono w-14 shrink-0 pt-0.5 text-[.72rem] ${t.overdue ? 'text-bad' : 'text-sea'}`}>{t.time ?? 'ganzt.'}</span>
+                    <span className="min-w-0 flex-1">
+                      <span className="block leading-snug">{t.title}</span>
+                      <span className="mono text-[.6rem] uppercase tracking-wider text-muted">
+                        ▪ Aufgabe · {domainLabel[t.domain] ?? t.domain}{t.hard ? ' · feste Frist' : ''}{t.overdue ? ' · überfällig' : ''}
+                      </span>
+                    </span>
+                  </Link>
+                )}
               </li>
             ))}
           </ol>
@@ -86,7 +97,10 @@ export function WeekCalendar({ weeks, domainLabel }: { weeks: CalWeek[]; domainL
             {day.isPast ? 'Nichts offen an diesem Tag.' : 'Frei – keine Termine oder Fristen.'}
           </p>
         )}
-        <Link href="/aufgaben/neu" className="btn-quiet mt-2 inline-flex">+ Aufgabe anlegen</Link>
+        <div className="mt-2 flex flex-wrap justify-between gap-2">
+          <Link href="/aufgaben/neu" className="btn-quiet inline-flex">+ Aufgabe anlegen</Link>
+          {!hasSources && <Link href="/kalender?verbinden=1" className="btn-quiet inline-flex">◷ iPhone-Kalender verbinden</Link>}
+        </div>
       </div>
     </section>
   );

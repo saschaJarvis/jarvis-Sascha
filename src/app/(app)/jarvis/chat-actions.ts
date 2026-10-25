@@ -5,6 +5,7 @@ import { requireUser } from '@/server/auth';
 import { db } from '@/server/repo';
 import { withService } from '@/server/db';
 import { FOLDER_LABEL, type Folder } from '@/server/storage';
+import { loadExternalEvents } from '@/server/calendars';
 import { AI_CONSENT, AI_CONSENT_TEXT, chat, claudeAvailable, CLAUDE_MODEL, type ChatTurn } from '@/server/claude';
 
 export interface ChatReply { answer?: string; proposals?: string[]; error?: string }
@@ -30,7 +31,10 @@ export async function askJarvisAction(raw: { question: string; history: ChatTurn
 
   const profile = await db(s).profile();
   const tz = profile.timezone;
-  const context = await buildContext(s, tz);
+  const ext = await loadExternalEvents(s, new Date(), new Date(Date.now() + 21 * 86_400_000)).catch(() => ({ events: [] }));
+  const evFmt = new Intl.DateTimeFormat('de-DE', { timeZone: tz, weekday: 'short', day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+  const evLines = ext.events.slice(0, 60).map((e) => `- ${e.allDay ? `${evFmt.format(e.start).split(',')[0]}, ganztägig` : evFmt.format(e.start)} | ${e.title}${e.location ? ` | ${e.location}` : ''} | ${e.source}`);
+  const context = (await buildContext(s, tz)) + `\n\nTermine aus Saschas Kalender (nächste 3 Wochen, nur lesend):\n${evLines.join('\n') || '- keine / kein Kalender verbunden'}`;
   const now = new Intl.DateTimeFormat('de-DE', { timeZone: tz, weekday: 'long', day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' }).format(new Date()) + ` (${tz})`;
   const proposals: string[] = [];
 
@@ -86,7 +90,7 @@ async function buildContext(s: Awaited<ReturnType<typeof requireUser>>, tz: stri
       lines.push(`- ${x.title} | ${FOLDER_LABEL[x.folder] ?? x.folder}${x.issuer ? ` | von ${x.issuer}` : ''}${x.expires_on ? ` | läuft ab ${x.expires_on}` : ''}${e.amount != null ? ` | Betrag ${e.amount} ${e.currency ?? ''}` : ''}${e.summary ? ` | ${String(e.summary).slice(0, 200)}` : ''}`);
     }
     if (prop) lines.push(`\nDubai-Wohnung (Angaben = vermutet, nicht belegt): ${JSON.stringify(prop)}`);
-    lines.push('\nNicht verbunden: E-Mail, Kalender, Bankkonten (keine Kontodaten vorhanden).');
+    lines.push('\nNicht verbunden: E-Mail, Bankkonten (keine Kontodaten vorhanden).');
     return lines.join('\n').slice(0, 30_000);
   });
 }

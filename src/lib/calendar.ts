@@ -1,7 +1,22 @@
 /**
  * Wochenkalender (Mo–So) in der Zeitzone des Nutzers. Reine Logik, ohne Server-Abhängigkeiten.
+ * Zeigt Jarvis-Aufgaben mit Frist und – falls verbunden – Termine aus externen Kalendern.
  */
 export interface CalTask { id: string; title: string; due_at: Date | string | null; domain: string; due_is_hard: boolean }
+export interface CalExternal { uid: string; title: string; start: Date; end: Date | null; allDay: boolean; dayFrom?: number; dayTo?: number; location: string | null; source: string }
+
+export interface CalItem {
+  kind: 'task' | 'event';
+  id: string;
+  title: string;
+  time: string | null;      // null = ganztägig / ohne Uhrzeit
+  endTime: string | null;
+  domain: string;
+  overdue: boolean;
+  hard: boolean;
+  location: string | null;
+  source: string | null;    // Kalendername bei Terminen
+}
 
 const DAY = 86_400_000;
 /** Kalendertag (Tage seit 1970) in Zeitzone tz */
@@ -23,31 +38,48 @@ export function isoWeek(dn: number): number {
   return Math.floor((thursday - jan1) / 7) + 1;
 }
 
-export function buildCalendar(tasks: readonly CalTask[], tz: string, now: Date, weeksBack = 1, weeksAhead = 8) {
+export function buildCalendar(tasks: readonly CalTask[], tz: string, now: Date, weeksBack = 1, weeksAhead = 8, events: readonly CalExternal[] = []) {
   const today = dayNo(now, tz);
   const monday = today - ((new Date(today * DAY).getUTCDay() + 6) % 7);
   const timeFmt = new Intl.DateTimeFormat('de-DE', { timeZone: tz, hour: '2-digit', minute: '2-digit', hourCycle: 'h23' });
-  const byDay = new Map<number, Array<{ id: string; title: string; time: string | null; domain: string; overdue: boolean; hard: boolean; sort: number }>>();
+  const byDay = new Map<number, Array<CalItem & { sort: number }>>();
+  const add = (dn: number, item: CalItem & { sort: number }) => { const l = byDay.get(dn) ?? []; l.push(item); byDay.set(dn, l); };
+
   for (const t of tasks) {
     if (!t.due_at) continue;
     const due = new Date(t.due_at);
-    const dn = dayNo(due, tz);
     const time = timeFmt.format(due);
-    const list = byDay.get(dn) ?? [];
-    list.push({ id: t.id, title: t.title, time: time === '00:00' ? null : time, domain: t.domain, overdue: due < now, hard: t.due_is_hard, sort: due.getTime() });
-    byDay.set(dn, list);
+    add(dayNo(due, tz), { kind: 'task', id: t.id, title: t.title, time: time === '00:00' ? null : time, endTime: null, domain: t.domain,
+      overdue: due < now, hard: t.due_is_hard, location: null, source: null, sort: due.getTime() });
   }
+  for (const e of events) {
+    const base = { kind: 'event' as const, title: e.title, domain: 'calendar', overdue: false, hard: false, location: e.location, source: e.source };
+    if (e.allDay && e.dayFrom != null) {
+      const last = Math.min(e.dayTo ?? e.dayFrom + 1, e.dayFrom + 14);
+      for (let dn = e.dayFrom; dn < last; dn++) add(dn, { ...base, id: `${e.uid}:${dn}`, time: null, endTime: null, sort: dn * DAY });
+    } else {
+      add(dayNo(e.start, tz), { ...base, id: `${e.uid}:${e.start.getTime()}`, time: timeFmt.format(e.start),
+        endTime: e.end ? timeFmt.format(e.end) : null, sort: e.start.getTime() });
+    }
+  }
+
   const weeks = [];
   for (let w = -weeksBack; w <= weeksAhead; w++) {
     const start = monday + w * 7;
     const days = Array.from({ length: 7 }, (_, i) => {
       const dn = start + i;
       const dow = new Date(dn * DAY).getUTCDay();
-      const items = (byDay.get(dn) ?? []).sort((a, b) => (a.time === null ? -1 : b.time === null ? 1 : a.sort - b.sort))
+      const items = (byDay.get(dn) ?? [])
+        .sort((a, b) => (a.time === null && b.time !== null ? -1 : b.time === null && a.time !== null ? 1 : a.sort - b.sort))
         .map(({ sort: _s, ...x }) => x);
       return { key: dn, wd: WD[dow], wdLong: WD_LONG[dow], date: `${ddmm(dn)}${new Date(dn * DAY).getUTCFullYear()}`, isToday: dn === today, isPast: dn < today, items };
     });
     weeks.push({ offset: w, label: `KW ${isoWeek(start)} · ${ddmm(start)} – ${ddmm(start + 6)}`, days });
   }
   return weeks;
+}
+
+/** Termine eines Tages (für Heute-Ansicht und Lagebericht) */
+export function eventsOnDay(events: readonly CalExternal[], tz: string, dn: number): CalExternal[] {
+  return events.filter((e) => (e.allDay && e.dayFrom != null ? e.dayFrom <= dn && dn < (e.dayTo ?? e.dayFrom + 1) : dayNo(e.start, tz) === dn));
 }

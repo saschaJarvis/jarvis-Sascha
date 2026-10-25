@@ -13,7 +13,8 @@ import { SnoozeMenu } from '@/components/snooze';
 import { QuickCapture } from '@/components/quick-capture';
 import { SortUpload } from '@/components/sort-upload';
 import { WeekCalendar } from '@/components/week-calendar';
-import { buildCalendar } from '@/lib/calendar';
+import { buildCalendar, eventsOnDay } from '@/lib/calendar';
+import { loadExternalEvents } from '@/server/calendars';
 import { DOMAIN_LABEL as DOMAIN } from '@/lib/labels';
 import { claudeAvailable, AI_CONSENT } from '@/server/claude';
 
@@ -32,7 +33,7 @@ const hhmm = (d: Date, tz: string) => new Intl.DateTimeFormat('de-DE', { timeZon
 
 export default async function BridgePage() {
   const s = await requireUser();
-  const [profile, open, done, extra, fx] = await Promise.all([
+  const [profile, open, done, extra, fx, ext] = await Promise.all([
     db(s).profile(), db(s).openTasks(), db(s).recentlyDone(),
     db(s).run(async (q) => {
       const [stats] = await q<Stats>(`select
@@ -55,6 +56,7 @@ export default async function BridgePage() {
       return { stats, cancellations, property: property[0], log };
     }),
     getFx(),
+    loadExternalEvents(s, new Date(Date.now() - 8 * 86_400_000), new Date(Date.now() + 9 * 7 * 86_400_000)),
   ]);
   const weather = await getWeather(profile.timezone);
 
@@ -74,6 +76,8 @@ export default async function BridgePage() {
   const todayTasks = open.filter((t) => due(t) && dayNo(due(t)!, tz) === today).sort((a, b) => +due(a)! - +due(b)!);
   const ranked = prio.map((t) => scoreTask(t, now)).sort((a, b) => b.score - a.score);
   const alerts = overdue.filter((t) => t.due_is_hard || t.urgency >= 3).slice(0, 2);
+  const todayEvents = eventsOnDay(ext.events, tz, today);
+  const nextEvent = todayEvents.filter((e) => !e.allDay && e.start > now).sort((a, b) => +a.start - +b.start)[0];
   const upcoming = open.filter((t) => due(t) && due(t)! >= now).sort((a, b) => +due(a)! - +due(b)!).slice(0, 5);
 
   const hour = hourIn(now, tz);
@@ -88,12 +92,13 @@ export default async function BridgePage() {
 
   const briefing = [
     `${hello}, ${name}. Es ist ${dateLong}, ${hhmm(now, 'Asia/Dubai')} Uhr in Dubai und ${hhmm(now, 'Europe/Berlin')} Uhr in Mainz${weather ? `, ${weather.tempC} °C in ${weather.place}` : ''}.`,
-    todayTasks.length ? `Heute ${todayTasks.length === 1 ? 'steht eine Aufgabe' : `stehen ${todayTasks.length} Aufgaben`} mit Termin an.` : 'Heute hast du keine festen Termine.',
+    todayEvents.length ? `Im Kalender ${todayEvents.length === 1 ? 'steht heute ein Termin' : `stehen heute ${todayEvents.length} Termine`}${nextEvent ? `, als Nächstes „${nextEvent.title}“ um ${hhmm(nextEvent.start, tz)} Uhr` : ''}.` : '',
+    todayTasks.length ? `${todayTasks.length === 1 ? 'Eine Aufgabe hat' : `${todayTasks.length} Aufgaben haben`} heute eine Frist.` : todayEvents.length ? '' : 'Heute hast du keine festen Termine.',
     overdue.length ? `${overdue.length} ${overdue.length === 1 ? 'Aufgabe ist' : 'Aufgaben sind'} überfällig.` : 'Nichts ist überfällig.',
     main ? `Mein Vorschlag für jetzt: „${main.title}“.` : 'Gerade drängt nichts – guter Moment, Dinge aus dem Kopf zu notieren.',
-  ].join(' ');
+  ].filter(Boolean).join(' ');
 
-  const weeks = buildCalendar(open, tz, now);
+  const weeks = buildCalendar(open, tz, now, 1, 8, ext.events);
   const hours = Array.from({ length: 16 }, (_, i) => i + 7); // 07–22 Uhr
 
   const domainCounts = Object.entries(open.reduce<Record<string, number>>((m, t) => ((m[t.domain] = (m[t.domain] ?? 0) + 1), m), {}))
@@ -184,7 +189,7 @@ export default async function BridgePage() {
             <p className="mx-auto max-w-2xl text-[1.05rem] leading-relaxed">{briefing}</p>
           </section>
 
-<WeekCalendar weeks={weeks} domainLabel={DOMAIN} />
+<WeekCalendar weeks={weeks} domainLabel={DOMAIN} hasSources={ext.sources.length > 0} />
 
           <nav aria-label="Schnellaktionen" className="flex flex-wrap justify-center gap-2">
             <Link href="/aufgaben/neu" className="btn btn-secondary min-h-10 text-[.7rem]">+ Neue Aufgabe</Link>
@@ -200,6 +205,7 @@ export default async function BridgePage() {
               <ol className="relative hidden border-l border-line sm:block" aria-label="Tagesverlauf">
                 {hours.map((h) => {
                   const at = todayTasks.filter((t) => hourIn(due(t)!, tz) === h);
+                  const evAt = todayEvents.filter((e) => !e.allDay && hourIn(e.start, tz) === h);
                   const isNow = h === hour;
                   return (
                     <li key={h} className={`relative flex min-h-5 items-start gap-2 pl-2 ${isNow ? 'text-sea' : ''}`}>
@@ -207,6 +213,7 @@ export default async function BridgePage() {
                       <span className="mono w-6 shrink-0 text-[.62rem] leading-5 text-muted">{String(h).padStart(2, '0')}</span>
                       <span className="min-w-0 flex-1">
                         {isNow && <span className="mono block border-t border-dashed border-sea/70 text-[.58rem] uppercase tracking-widest text-sea">{hhmm(now, tz)} · jetzt</span>}
+                        {evAt.map((e) => <span key={`${e.uid}${+e.start}`} className="block truncate text-[.75rem] text-good">◷ {hhmm(e.start, tz)} {e.title}</span>)}
                         {at.map((t) => <Link key={t.id} href={`/aufgaben/${t.id}`} className="block truncate text-[.75rem] text-ink">▪ {t.title}</Link>)}
                       </span>
                     </li>
@@ -308,6 +315,7 @@ export default async function BridgePage() {
               <SysRow ok={!paused} label="Erinnerungen" value={paused ? 'pausiert' : 'aktiv'} />
               <SysRow ok label="Dokumente" value={`${extra.stats.documents} sicher`} />
               <SysRow ok={!!weather && !!fx} label="Außendaten" value={weather && fx ? 'online' : 'teilweise'} />
+              <SysRow ok={ext.sources.every((x) => x.ok)} label="Kalender" value={ext.sources.length ? `${ext.sources.filter((x) => x.ok).length}/${ext.sources.length} ok` : 'keiner'} />
               <SysRow ok={claudeAvailable()} label="Claude" value={claudeAvailable() ? (extra.stats.ai_consent ? 'verbunden' : 'bereit') : 'kein Schlüssel'} />
             </ul>
             <div className="border-t border-line pt-2">
