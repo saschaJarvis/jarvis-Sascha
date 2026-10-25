@@ -4,6 +4,8 @@ import { db } from '@/server/repo';
 import { FOLDERS, FOLDER_LABEL, type Folder } from '@/server/storage';
 import { PageTitle, Section } from '@/components/ui';
 import { UploadForm } from './upload-form';
+import { SortUpload } from '@/components/sort-upload';
+import { AI_CONSENT, claudeAvailable } from '@/server/claude';
 
 const STATE: Record<string, string> = {
   requested: 'angefordert', uploaded: 'hochgeladen', reviewed: 'geprüft', officially_confirmed: 'offiziell bestätigt', rejected: 'abgelehnt',
@@ -22,10 +24,12 @@ export default async function DocumentsPage({ searchParams }: { searchParams: Pr
        left join lateral (select * from document_versions where document_id = d.id order by version_no desc limit 1) v on true
       where d.deleted_at is null and ($1::text is null or d.folder = $1) and ($2 = '' or d.title ilike '%' || $2 || '%')
       order by d.created_at desc limit 200`, [folder, search]));
+  const consent = await db(s).run(async (qq) => (await qq<{ ok: boolean }>('select app.has_consent(auth.uid(), $1) as ok', [AI_CONSENT]))[0].ok);
 
   return (
     <div>
       <PageTitle back={{ href: '/leben', label: 'Leben' }} title="Dokumente" />
+      <div className="card mb-4"><SortUpload claude={claudeAvailable()} consented={consent} /></div>
       <form className="mb-3"><label className="sr-only" htmlFor="q">Suchen</label>
         <input id="q" name="q" defaultValue={search} placeholder="Suchen …" className="field" />{folder && <input type="hidden" name="ordner" value={folder} />}</form>
       <div className="-mx-4 mb-4 flex gap-1 overflow-x-auto px-4 pb-1">

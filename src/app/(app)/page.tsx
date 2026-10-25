@@ -11,6 +11,8 @@ import { Core, Empty, Metric, Panel, Segments } from '@/components/hud';
 import { TransitionButton } from '@/components/task-actions';
 import { SnoozeMenu } from '@/components/snooze';
 import { QuickCapture } from '@/components/quick-capture';
+import { SortUpload } from '@/components/sort-upload';
+import { claudeAvailable, AI_CONSENT } from '@/server/claude';
 
 const DOMAIN: Record<string, string> = {
   relocation: 'Umzug', finance: 'Geld', contracts: 'Verträge', documents: 'Dokumente', property: 'Dubai-Wohnung',
@@ -20,7 +22,7 @@ const DUBAI_DOCS = 6; // SPA, Oqood, Zahlungsplan, Bankangebot, Service Charge, 
 
 interface Stats {
   contracts: number; contracts_demo: number; accounts: number; transactions: number; documents: number; uae_docs: number;
-  chain_broken_at: string | null; review: number;
+  chain_broken_at: string | null; review: number; ai_consent: boolean;
 }
 
 /** Tagesnummer in der Zeitzone des Nutzers (für „heute“, „morgen“, „3 T über“) */
@@ -42,7 +44,8 @@ export default async function BridgePage() {
         (select count(*)::int from documents where deleted_at is null) documents,
         (select count(*)::int from documents where deleted_at is null and folder = 'uae_property') uae_docs,
         app.verify_audit_chain(auth.uid())::text chain_broken_at,
-        (select count(*)::int from tasks where deleted_at is null and status in ('DETECTED','NEEDS_REVIEW')) review`);
+        (select count(*)::int from tasks where deleted_at is null and status in ('DETECTED','NEEDS_REVIEW')) review,
+        app.has_consent(auth.uid(), $1) ai_consent`, [AI_CONSENT]);
       const cancellations = await q<{ id: string; contract_id: string; name: string; status: string; is_demo: boolean }>(
         `select r.id, r.contract_id, c.name, r.status::text status, r.is_demo from cancellation_requests r join contracts c on c.id = r.contract_id
           where r.deleted_at is null and r.status <> 'CLOSED' order by r.updated_at desc limit 4`);
@@ -184,6 +187,8 @@ export default async function BridgePage() {
             </section>
           )}
 
+          <div className="card"><SortUpload claude={claudeAvailable()} consented={extra.stats.ai_consent} /></div>
+
           <section aria-label="Lagebericht" className="px-1 text-center">
             <p className="mx-auto max-w-2xl text-[1.05rem] leading-relaxed">{briefing}</p>
           </section>
@@ -323,6 +328,7 @@ export default async function BridgePage() {
               <SysRow ok={!paused} label="Erinnerungen" value={paused ? 'pausiert' : 'aktiv'} />
               <SysRow ok label="Dokumente" value={`${extra.stats.documents} sicher`} />
               <SysRow ok={!!weather && !!fx} label="Außendaten" value={weather && fx ? 'online' : 'teilweise'} />
+              <SysRow ok={claudeAvailable()} label="Claude" value={claudeAvailable() ? (extra.stats.ai_consent ? 'verbunden' : 'bereit') : 'kein Schlüssel'} />
             </ul>
             <div className="border-t border-line pt-2">
               <p className="mono mb-1 text-[.6rem] uppercase tracking-widest text-muted">Protokoll</p>

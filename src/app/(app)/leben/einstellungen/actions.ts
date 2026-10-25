@@ -71,3 +71,10 @@ export async function requestDeletionAction(): Promise<void> {
   revalidatePath('/', 'layout');
   redirect('/leben/einstellungen?geloescht=1');
 }
+
+export async function aiConsentAction(fd: FormData): Promise<void> {
+  const s = await requireUser();
+  const on = fd.get('on') === 'true';
+  await db(s).run((q) => q(`insert into consent_records (user_id, purpose, granted, text_version) values (auth.uid(), 'ai.claude', $1, 'ai-v1')`, [on]));
+  revalidatePath('/', 'layout');
+}

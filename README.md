@@ -78,7 +78,8 @@ Legende: **TESTED** = gebaut und automatisch getestet · **IMPLEMENTED** = gebau
 | Inbox | Gmail/Outlook OAuth, Triage, Prompt-Injection-Schutz | PLANNED (P3) |
 | Umzug | Recherche DE/UAE mit Quellen und 22 App-Regeln | IMPLEMENTED (Dokument) |
 | Umzug | Checkliste/Abhängigkeitsvorlagen in der App | PLANNED |
-| Assistent | Chat/Voice „Was muss ich heute machen?" | PLANNED |
+| Assistent | Chat mit Claude im Jarvis-Reiter (Kontext = eigene Daten, Vorschläge nur in den Eingang, Einwilligung `ai.claude`) | TESTED (E2E mit Claude-Testmodus) – live, sobald ANTHROPIC_API_KEY gesetzt |
+| Dokumente | „Hochladen & sortieren“: Claude liest PDF/Foto, benennt, wählt Ordner, Absender/Betrag/Ablaufdatum, Aufgaben als „erkannt“ in den Eingang; ohne Schlüssel Einordnung nach Dateiname | TESTED (E2E mit Claude-Testmodus) |
 
 ## Dokumentation
 `docs/PLAN.md` · `docs/ARCHITECTURE.md` · `docs/SECURITY.md` · `docs/DATA_MODEL.md` · `docs/TEST_PLAN.md` · `docs/ACCESS_CHECKLIST.md` · `docs/TASKS.md` · `docs/RESEARCH_DE_UAE.md`

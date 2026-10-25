@@ -9,7 +9,7 @@ export function UploadForm({ defaultFolder, folders }: { defaultFolder: string; 
   useEffect(() => { if (state?.ok) ref.current?.reset(); }, [state]);
   return (
     <details className="card" open={false}>
-      <summary className="cursor-pointer text-lg font-semibold text-sea">+ Dokument hochladen</summary>
+      <summary className="cursor-pointer text-lg font-semibold text-sea">+ Selbst einordnen (Name und Ordner wählen)</summary>
       <form ref={ref} action={action} className="mt-4 grid gap-3">
         <div><label className="label" htmlFor="title">Name</label><input id="title" name="title" required minLength={2} maxLength={200} className="field" placeholder="z. B. Mietvertrag Büro" /></div>
         <div><label className="label" htmlFor="folder">Ordner</label>

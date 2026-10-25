@@ -1,7 +1,8 @@
 import { requireUser } from '@/server/auth';
 import { db } from '@/server/repo';
 import { PageTitle, Section } from '@/components/ui';
-import { killSwitchAction, requestDeletionAction, resumeAction } from './actions';
+import { aiConsentAction, killSwitchAction, requestDeletionAction, resumeAction } from './actions';
+import { AI_CONSENT, claudeAvailable, CLAUDE_MODEL } from '@/server/claude';
 import { SettingsForm } from './settings-form';
 import { logoutAction } from '@/app/(auth)/actions';
 
@@ -14,6 +15,7 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
      order by purpose, created_at desc, id desc`));
   const granted = new Set(consents.filter((c) => c.granted).map((c) => c.purpose.replace('notify.', '')));
   const deletion = await db(s).run((q) => q<{ execute_after: Date }>('select execute_after from deletion_requests where cancelled_at is null and executed_at is null limit 1'));
+  const ai = await db(s).run(async (q) => (await q<{ ok: boolean }>('select app.has_consent(auth.uid(), $1) as ok', [AI_CONSENT]))[0].ok);
   const paused = profile.paused_until && new Date(profile.paused_until) > new Date();
 
   return (
@@ -36,6 +38,18 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
             <input type="hidden" name="on" value={profile.kill_switch ? 'false' : 'true'} />
             <p className="mb-2"><strong>Notaus:</strong> {profile.kill_switch ? 'AN – Jarvis tut nichts automatisch.' : 'aus'}</p>
             <button className={`btn w-full ${profile.kill_switch ? 'btn-secondary' : 'btn-danger'}`}>{profile.kill_switch ? 'Notaus aufheben' : 'Alles Automatische sofort stoppen'}</button>
+          </form>
+        </div>
+      </Section>
+
+      <Section title="Claude (KI)">
+        <div className="card grid gap-2 text-sm">
+          <p>Status: <strong>{claudeAvailable() ? `verbunden (${CLAUDE_MODEL()})` : 'nicht verbunden – API-Schlüssel fehlt'}</strong></p>
+          <p className="text-muted">Mit deiner Zustimmung liest Claude hochgeladene Dokumente zum Sortieren und beantwortet Fragen im Jarvis-Reiter anhand einer Übersicht deiner Daten. Claude kann nichts senden, kündigen oder bezahlen; Vorschläge landen im Eingang.</p>
+          <form action={aiConsentAction}>
+            <input type="hidden" name="on" value={ai ? 'false' : 'true'} />
+            <p className="mb-2">Zustimmung: <strong>{ai ? 'erteilt' : 'nicht erteilt'}</strong></p>
+            <button className="btn btn-secondary w-full">{ai ? 'Zustimmung widerrufen' : 'Zustimmen'}</button>
           </form>
         </div>
       </Section>

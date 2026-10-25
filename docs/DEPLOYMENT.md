@@ -42,6 +42,8 @@ Sag Claude Bescheid – dann wird `ALLOW_SIGNUP=false` gesetzt und in Supabase d
 | `NEXT_PUBLIC_SUPABASE_URL` | `.env.production` | nein |
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` (Publishable Key) | `.env.production` | nein (durch RLS geschützt) |
 | `DATABASE_URL` (Transaction Pooler, Port 6543) | Vercel Environment Variables | **ja** |
+| `ANTHROPIC_API_KEY` (Claude) | Vercel Environment Variables, Typ **Sensitive** | **ja** |
+| `ANTHROPIC_MODEL` (optional, Standard `claude-sonnet-5-5`) | Vercel | nein |
 | `SUPABASE_DB_CA` (optional, PEM der Supabase-CA für strikte Zertifikatsprüfung) | Vercel | nein |
 
 Der Server verbindet sich mit `DATABASE_URL`, setzt pro Anfrage `role authenticated` + die geprüften JWT-Claims des Nutzers – RLS und alle Guards gelten genauso wie in den Tests. Dateien liegen im privaten Bucket `vault`; Downloads nur über 60-Sekunden-Links nach RLS-Prüfung. Uploads sind auf Vercel auf 4 MB begrenzt (Plattformgrenze); größere Dateien folgen über direkte, signierte Uploads.

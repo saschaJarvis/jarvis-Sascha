@@ -4,6 +4,8 @@ import { db, asPriorityTask } from '@/server/repo';
 import { buildTodayView, scoreTask } from '@/lib/domain/priority';
 import { formatDue, PageTitle } from '@/components/ui';
 import { QuickCapture } from '@/components/quick-capture';
+import { AI_CONSENT, claudeAvailable } from '@/server/claude';
+import { JarvisChat } from './chat';
 
 const QUESTIONS = [
   { k: 'heute', q: 'Was muss ich heute machen?' },
@@ -15,7 +17,8 @@ const QUESTIONS = [
 export default async function JarvisPage({ searchParams }: { searchParams: Promise<{ f?: string }> }) {
   const s = await requireUser();
   const { f } = await searchParams;
-  const [profile, open] = await Promise.all([db(s).profile(), db(s).openTasks()]);
+  const [profile, open, consent] = await Promise.all([db(s).profile(), db(s).openTasks(),
+    db(s).run(async (q) => (await q<{ ok: boolean }>('select app.has_consent(auth.uid(), $1) as ok', [AI_CONSENT]))[0].ok)]);
   const tz = profile.timezone;
   const now = new Date();
   let answer: React.ReactNode = null;
@@ -52,13 +55,17 @@ export default async function JarvisPage({ searchParams }: { searchParams: Promi
   return (
     <div>
       <PageTitle title="Frag Jarvis" />
+      {claudeAvailable() ? <JarvisChat consented={consent} /> : (
+        <p className="notice notice-info">Claude ist noch nicht verbunden. Sobald der API-Schlüssel bei Vercel eingetragen ist, kannst du hier frei fragen.</p>
+      )}
+      <h2 className="eyebrow mt-8 mb-2">Schnellantworten ohne KI</h2>
       <div className="grid gap-2">
         {QUESTIONS.map((x) => (
           <Link key={x.k} href={`/jarvis?f=${x.k}`} className={`card font-semibold ${f === x.k ? 'border-sea' : ''}`}>{x.q}</Link>
         ))}
       </div>
       {answer && <section aria-live="polite" className="card mt-4 bg-sea-soft">{answer}</section>}
-      <p className="mt-3 text-xs text-muted">Antworten stammen nur aus deinen Daten in Jarvis. Freie Fragen mit KI folgen, sobald ein KI-Zugang eingerichtet ist.</p>
+      <p className="mt-3 text-xs text-muted">Diese Antworten berechnet Jarvis selbst aus deinen Daten – ohne KI.</p>
       <h2 className="eyebrow mt-8 mb-2">Alles loswerden, was dir im Kopf herumgeht</h2>
       <QuickCapture />
     </div>
