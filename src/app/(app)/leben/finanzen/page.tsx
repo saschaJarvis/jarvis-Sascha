@@ -1,6 +1,6 @@
 import { requireUser } from '@/server/auth';
 import { db } from '@/server/repo';
-import { coinPrices, loadAdaAccount, loadAlgoAccount, loadBtcAccount, loadEthAccount, loadXrpAccount, WALLETS_SQL, type AdaAccount, type AlgoAccount, type BtcAccount, type Coin, type EthAccount, type PriceCoin, type XrpAccount } from '@/server/wallets';
+import { coinPrices, loadAdaAccount, loadAlgoAccount, loadBtcAccount, loadEthAccount, loadXrpAccount, loadZecAccount, WALLETS_SQL, type AdaAccount, type AlgoAccount, type BtcAccount, type Coin, type EthAccount, type PriceCoin, type XrpAccount, type ZecAccount } from '@/server/wallets';
 import { AED_PER_USD } from '@/lib/domain/networth';
 import { PageTitle, Section } from '@/components/ui';
 import { timeAgo } from '@/lib/news';
@@ -20,7 +20,7 @@ const FORM: Record<string, string> = { bar: 'Barren', coin: 'Münze', jewelry: '
 export const dynamic = 'force-dynamic';
 
 const nf = (n: number, d = 2) => n.toLocaleString('de-DE', { minimumFractionDigits: d, maximumFractionDigits: d });
-const DEC: Record<Coin, number> = { xrp: 2, eth: 4, btc: 8, ada: 2, algo: 2 };
+const DEC: Record<Coin, number> = { xrp: 2, eth: 4, btc: 8, ada: 2, algo: 2, zec: 4 };
 const short = (a: string) => `${a.slice(0, 6)}…${a.slice(-4)}`;
 
 export default async function FinancePage() {
@@ -30,12 +30,12 @@ export default async function FinancePage() {
   const wallets = await db(s).run((q) => q<{ id: string; chain: Coin; address: string; label: string }>(
     WALLETS_SQL));
   const [views, prices, nw] = await Promise.all([
-    Promise.all(wallets.map((w): Promise<XrpAccount | EthAccount | BtcAccount | AdaAccount | AlgoAccount> => (w.chain === 'eth' ? loadEthAccount(w.address) : w.chain === 'btc' ? loadBtcAccount(w.address) : w.chain === 'ada' ? loadAdaAccount(w.address) : w.chain === 'algo' ? loadAlgoAccount(w.address) : loadXrpAccount(w.address)))),
+    Promise.all(wallets.map((w): Promise<XrpAccount | EthAccount | BtcAccount | AdaAccount | AlgoAccount | ZecAccount> => (w.chain === 'zec' ? loadZecAccount(w.address) : w.chain === 'eth' ? loadEthAccount(w.address) : w.chain === 'btc' ? loadBtcAccount(w.address) : w.chain === 'ada' ? loadAdaAccount(w.address) : w.chain === 'algo' ? loadAlgoAccount(w.address) : loadXrpAccount(w.address)))),
     coinPrices([...new Set<PriceCoin>([...wallets.map((w) => w.chain), ...(wallets.some((w) => w.chain === 'eth') ? ['qnt' as const] : [])])]),
     loadNetWorth(s),
   ]);
   const statements = await loadStatements(s);
-  const EXPLORER: Record<Coin, (a: string) => string> = { xrp: (a) => `https://livenet.xrpl.org/accounts/${a}`, eth: (a) => `https://etherscan.io/address/${a}`, btc: (a) => `https://mempool.space/address/${a}`, ada: (a) => `https://cardanoscan.io/address/${a}`, algo: (a) => `https://allo.info/account/${a}` };
+  const EXPLORER: Record<Coin, (a: string) => string> = { xrp: (a) => `https://livenet.xrpl.org/accounts/${a}`, eth: (a) => `https://etherscan.io/address/${a}`, btc: (a) => `https://mempool.space/address/${a}`, ada: (a) => `https://cardanoscan.io/address/${a}`, algo: (a) => `https://allo.info/account/${a}`, zec: (a) => `https://blockchair.com/zcash/address/${a}` };
   const now = new Date();
 
   return (
@@ -109,7 +109,7 @@ export default async function FinancePage() {
           <div className="card mb-3 grid gap-1">
             <p className="eyebrow">Krypto gesamt</p>
             <p className="text-2xl font-bold">{nf(nw.crypto.aed, 0)} AED</p>
-            <p className="text-muted">{nw.eurAed ? `≈ ${nf(nw.crypto.aed / nw.eurAed, 0)} € · ` : ''}{Object.entries(nw.crypto.holdings).filter(([, v]) => v != null).sort(([a], [b]) => ['BTC', 'ETH', 'XRP', 'ADA', 'ALGO', 'QNT', 'USDT', 'USDC'].indexOf(a) - ['BTC', 'ETH', 'XRP', 'ADA', 'ALGO', 'QNT', 'USDT', 'USDC'].indexOf(b)).map(([k, v]) => `${nf(v ?? 0, k === 'BTC' ? 8 : k === 'ETH' ? 4 : 2)} ${k}`).join(' · ')}</p>
+            <p className="text-muted">{nw.eurAed ? `≈ ${nf(nw.crypto.aed / nw.eurAed, 0)} € · ` : ''}{Object.entries(nw.crypto.holdings).filter(([, v]) => v != null).sort(([a], [b]) => ['BTC', 'ETH', 'XRP', 'ADA', 'ALGO', 'ZEC', 'QNT', 'USDT', 'USDC'].indexOf(a) - ['BTC', 'ETH', 'XRP', 'ADA', 'ALGO', 'ZEC', 'QNT', 'USDT', 'USDC'].indexOf(b)).map(([k, v]) => `${nf(v ?? 0, k === 'BTC' ? 8 : k === 'ETH' ? 4 : 2)} ${k}`).join(' · ')}</p>
             {nw.crypto.error && <p className="text-sm text-warn">Ein Teil ist gerade ohne Kurs oder Netz – nicht mitgezählt.</p>}
             {nw.crypto.change && <div className="mt-1"><CryptoChange ch={nw.crypto.change} asOf={nw.crypto.asOf} label="24 h" /></div>}
             {nw.crypto.coins.length > 0 && (
@@ -151,7 +151,8 @@ export default async function FinancePage() {
             const b = w.chain === 'btc' ? (v as BtcAccount) : null;
             const c = w.chain === 'ada' ? (v as AdaAccount) : null;
             const g = w.chain === 'algo' ? (v as AlgoAccount) : null;
-            const amount = x ? x.xrp : e ? e.eth : b ? b.btc : c ? c.ada : g!.algo;
+            const z = w.chain === 'zec' ? (v as ZecAccount) : null;
+            const amount = x ? x.xrp : e ? e.eth : b ? b.btc : c ? c.ada : z ? z.zec : g!.algo;
             // Token-Wert in €: Stablecoins = 1 USD, andere (z. B. QNT) zum eigenen Kurs
             const tokenEur = e && nw.eurAed ? e.tokens.reduce((n, t) => n + (!Number.isFinite(t.amount) ? 0 : t.price === 'usd' ? (t.amount * AED_PER_USD) / nw.eurAed! : t.amount * (prices[t.price]?.eur ?? 0)), 0) : 0;
             return (
@@ -212,6 +213,26 @@ export default async function FinancePage() {
                     )}
                   </>
                 )}
+                {z && !z.error && (
+                  <>
+                    {z.pendingZec !== 0 && <p className="text-xs text-warn">Unbestätigt: {z.pendingZec > 0 ? '+' : ''}{nf(z.pendingZec, 8)} ZEC</p>}
+                    <p className="text-xs text-muted">Zeigt nur das transparente Guthaben dieser t1-Adresse{z.source ? ` (Quelle: ${z.source})` : ''}. Abgeschirmte (shielded) ZEC sind von außen nicht sichtbar.{z.zec === 0 && z.txCount > 0 ? ` Die Adresse wurde ${z.txCount}× benutzt und ist gerade leer – Ledger Live nimmt für jeden Empfang eine neue Adresse.` : ''}</p>
+                    {z.moves.length > 0 && (
+                      <details>
+                        <summary className="cursor-pointer text-sm text-sea">Letzte Bewegungen ({z.moves.length})</summary>
+                        <ul className="mt-2 grid gap-1 text-sm">
+                          {z.moves.map((m) => (
+                            <li key={m.txid} className="flex items-baseline justify-between gap-2 border-b border-line pb-1 last:border-0">
+                              <span className={m.zec > 0 ? 'text-good' : m.zec < 0 ? 'text-bad' : 'text-muted'}>{m.zec > 0 ? '↓ Eingang' : m.zec < 0 ? '↑ Ausgang' : '↔'}{!m.confirmed && ' (unbestätigt)'}</span>
+                              <span className="shrink-0 text-right">{m.zec > 0 ? '+' : m.zec < 0 ? '−' : ''}{nf(Math.abs(m.zec), 4)} ZEC
+                                <span className="block text-xs text-muted" suppressHydrationWarning>{m.date ? timeAgo(m.date, now) : 'ausstehend'}</span></span>
+                            </li>
+                          ))}
+                        </ul>
+                      </details>
+                    )}
+                  </>
+                )}
                 {x && x.reserveXrp != null && x.activated && !x.error && (
                   <p className="text-xs text-muted">Davon {nf(x.reserveXrp, 1)} XRP als Mindestreserve des XRP Ledgers gebunden.</p>
                 )}
@@ -246,7 +267,7 @@ export default async function FinancePage() {
         </ul>
 
         <div className="mt-3">
-          <ConnectSection initialOpen={wallets.length === 0} title="+ Wallet-Adresse hinzufügen (BTC / ETH / XRP / ADA / ALGO)">
+          <ConnectSection initialOpen={wallets.length === 0} title="+ Wallet-Adresse hinzufügen (BTC / ETH / XRP / ADA / ALGO / ZEC)">
             <div className="mt-3"><AddWalletForm /></div>
           </ConnectSection>
         </div>

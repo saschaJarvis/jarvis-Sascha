@@ -2,6 +2,7 @@ import 'server-only';
 import { DROPS_PER_XRP, toMove, type XrpMove } from '@/lib/crypto/xrp';
 import { balanceOfData, decodeAbiString, ETH_TOKENS, fromUnits } from '@/lib/crypto/eth';
 import { SATS_PER_BTC } from '@/lib/crypto/btc';
+import { ZAT_PER_ZEC } from '@/lib/crypto/zec';
 import { LOVELACE_PER_ADA, stakeAddressOf } from '@/lib/crypto/ada';
 import { ALGO_STABLES, MICRO_PER_ALGO } from '@/lib/crypto/algo';
 import { priceAgo, relChange } from '@/lib/domain/change';
@@ -93,7 +94,7 @@ export async function loadXrpAccount(address: string): Promise<XrpAccount> {
   });
 }
 
-export type Coin = 'xrp' | 'eth' | 'btc' | 'ada' | 'algo';
+export type Coin = 'xrp' | 'eth' | 'btc' | 'ada' | 'algo' | 'zec';
 /** Kurs-Kürzel: Ketten + Tokens mit eigenem Kurs (z. B. Quant auf Ethereum) */
 export type PriceCoin = Coin | 'qnt';
 
@@ -103,10 +104,11 @@ export const WALLETS_SQL = `select id, chain, address, label, created_at from (
   union all select id, 'eth'::text, address, label, created_at from eth_wallets where deleted_at is null
   union all select id, 'btc'::text, address, label, created_at from btc_wallets where deleted_at is null
   union all select id, 'ada'::text, address, label, created_at from ada_wallets where deleted_at is null
-  union all select id, 'algo'::text, address, label, created_at from algo_wallets where deleted_at is null) w order by created_at`;
-const GECKO: Record<PriceCoin, string> = { xrp: 'ripple', eth: 'ethereum', btc: 'bitcoin', ada: 'cardano', algo: 'algorand', qnt: 'quant-network' };
+  union all select id, 'algo'::text, address, label, created_at from algo_wallets where deleted_at is null
+  union all select id, 'zec'::text, address, label, created_at from zec_wallets where deleted_at is null) w order by created_at`;
+const GECKO: Record<PriceCoin, string> = { xrp: 'ripple', eth: 'ethereum', btc: 'bitcoin', ada: 'cardano', algo: 'algorand', zec: 'zcash', qnt: 'quant-network' };
 
-const KRAKEN_PAIR: Record<PriceCoin, string> = { btc: 'XBT', eth: 'ETH', xrp: 'XRP', ada: 'ADA', algo: 'ALGO', qnt: 'QNT' };
+const KRAKEN_PAIR: Record<PriceCoin, string> = { btc: 'XBT', eth: 'ETH', xrp: 'XRP', ada: 'ADA', algo: 'ALGO', zec: 'ZEC', qnt: 'QNT' };
 const PRICE_TTL = 20; // Sekunden – „quasi Echtzeit“; Kraken erlaubt ~1 Abfrage/s je IP
 
 /**
@@ -114,10 +116,10 @@ const PRICE_TTL = 20; // Sekunden – „quasi Echtzeit“; Kraken erlaubt ~1 Ab
  * letzter Handelspreis in EUR und USD, dazu die 24-h-Veränderung aus Stundenkerzen.
  * Ausweich: CoinGecko (Durchschnitt mehrerer Börsen, inkl. 24-h-Änderung). AED über die USD-Bindung.
  */
-export async function coinPrices(coins: readonly PriceCoin[] = ['xrp', 'eth', 'btc', 'ada', 'algo', 'qnt']): Promise<Partial<Record<PriceCoin, Price>>> {
+export async function coinPrices(coins: readonly PriceCoin[] = ['xrp', 'eth', 'btc', 'ada', 'algo', 'zec', 'qnt']): Promise<Partial<Record<PriceCoin, Price>>> {
   if (fake()) {
     const t = (eur: number, usd: number, change24h: number) => ({ eur, usd, aed: usd * AED_PER_USD, source: 'Test', at: new Date(), change24h });
-    return { xrp: t(2, 2.2, 0.1), eth: t(3000, 3300, -0.02), btc: t(90000, 100000, 0.01), ada: t(0.6, 0.7, 0), algo: t(0.2, 0.22, 0.05), qnt: t(80, 90, -0.03) };
+    return { xrp: t(2, 2.2, 0.1), eth: t(3000, 3300, -0.02), btc: t(90000, 100000, 0.01), ada: t(0.6, 0.7, 0), algo: t(0.2, 0.22, 0.05), zec: t(40, 44, 0.02), qnt: t(80, 90, -0.03) };
   }
   const out: Partial<Record<PriceCoin, Price>> = {};
   if (!coins.length) return out;
@@ -302,5 +304,50 @@ export async function loadAlgoAccount(address: string): Promise<AlgoAccount> {
       } catch (e) { console.error('[algo]', base, (e as Error).message); }
     }
     return { address, algo: NaN, minBalance: 0, tokens: [], online: false, error: 'Algorand-Netz gerade nicht erreichbar.' };
+  });
+}
+
+// ---------- Zcash (nur transparente Adressen t1/t3) ----------
+export interface ZecMove { txid: string; date: Date | null; zec: number; confirmed: boolean }
+export interface ZecAccount { address: string; zec: number; pendingZec: number; txCount: number; moves: ZecMove[]; source?: string; error?: string }
+
+const UA = { 'user-agent': 'Mozilla/5.0 (Jarvis read-only)', accept: 'application/json' };
+// Blockbook-Instanzen (Trezor, Guarda) – gleiche API wie Ledger/Trezor-Wallets intern nutzen
+const ZEC_BLOCKBOOK = ['https://zec1.trezor.io', 'https://zec2.trezor.io', 'https://zecbook.guarda.co'];
+
+interface BlockbookAddr { balance?: string; unconfirmedBalance?: string; txs?: number; transactions?: Array<{ txid: string; blockTime?: number; confirmations?: number; vin?: Array<{ addresses?: string[]; value?: string }>; vout?: Array<{ addresses?: string[]; value?: string }> }> }
+
+async function zecBlockchair(address: string): Promise<ZecAccount | null> {
+  const r = await fetch(`https://api.blockchair.com/zcash/dashboards/address/${address}?transaction_details=true&limit=15`, { headers: UA, next: { revalidate: 300 }, signal: AbortSignal.timeout(7000) });
+  if (!r.ok) { console.error('[zec] blockchair', `HTTP ${r.status}`); return null; }
+  const j = (await r.json()) as { data?: Record<string, { address?: { balance?: number; transaction_count?: number }; transactions?: Array<{ hash: string; time?: string; balance_change?: number; block_id?: number }> }> };
+  const d = j.data?.[address];
+  if (!d?.address) return { address, zec: 0, pendingZec: 0, txCount: 0, moves: [], source: 'Blockchair' };
+  const moves = (d.transactions ?? []).slice(0, 15).map((t) => ({
+    txid: t.hash, date: t.time ? new Date(`${t.time.replace(' ', 'T')}Z`) : null, zec: (t.balance_change ?? 0) / ZAT_PER_ZEC, confirmed: (t.block_id ?? -1) > 0,
+  }));
+  return { address, zec: (d.address.balance ?? 0) / ZAT_PER_ZEC, pendingZec: 0, txCount: d.address.transaction_count ?? 0, moves, source: 'Blockchair' };
+}
+
+async function zecBlockbook(base: string, address: string): Promise<ZecAccount | null> {
+  const r = await fetch(`${base}/api/v2/address/${address}?details=txs&pageSize=15`, { headers: UA, next: { revalidate: 120 }, signal: AbortSignal.timeout(7000) });
+  if (!r.ok) { console.error('[zec]', base, `HTTP ${r.status}`); return null; }
+  const a = (await r.json()) as BlockbookAddr;
+  if (a.balance == null) return null;
+  const sum = (xs: Array<{ addresses?: string[]; value?: string }> | undefined) => (xs ?? []).filter((x) => x.addresses?.includes(address)).reduce((n, x) => n + Number(x.value ?? 0), 0);
+  const moves = (a.transactions ?? []).map((t) => ({
+    txid: t.txid, date: t.blockTime ? new Date(t.blockTime * 1000) : null, zec: (sum(t.vout) - sum(t.vin)) / ZAT_PER_ZEC, confirmed: (t.confirmations ?? 0) > 0,
+  }));
+  return { address, zec: Number(a.balance) / ZAT_PER_ZEC, pendingZec: Number(a.unconfirmedBalance ?? 0) / ZAT_PER_ZEC, txCount: a.txs ?? 0, moves, source: new URL(base).hostname };
+}
+
+export async function loadZecAccount(address: string): Promise<ZecAccount> {
+  if (fake()) return { address, zec: 12.5, pendingZec: 0, txCount: 2, moves: [{ txid: 'TESTZEC', date: new Date(Date.now() - 5 * 86_400_000), zec: 12.5, confirmed: true }], source: 'Test' };
+  return cached(`zec:${address}`, 120_000, async () => {
+    for (const base of ZEC_BLOCKBOOK) {
+      try { const a = await zecBlockbook(base, address); if (a) return a; } catch (e) { console.error('[zec]', base, (e as Error).message); }
+    }
+    try { const a = await zecBlockchair(address); if (a) return a; } catch (e) { console.error('[zec] blockchair', (e as Error).message); }
+    return { address, zec: NaN, pendingZec: 0, txCount: 0, moves: [], error: 'Zcash-Netz gerade nicht erreichbar.' };
   });
 }

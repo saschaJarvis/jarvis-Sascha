@@ -2,7 +2,7 @@ import 'server-only';
 import { db } from './repo';
 import type { Session } from './auth';
 import { getFx } from './ext';
-import { coinPrices, loadAdaAccount, loadAlgoAccount, loadBtcAccount, loadEthAccount, loadXrpAccount, WALLETS_SQL, type Coin, type PriceCoin } from './wallets';
+import { coinPrices, loadAdaAccount, loadAlgoAccount, loadBtcAccount, loadEthAccount, loadXrpAccount, loadZecAccount, WALLETS_SQL, type Coin, type PriceCoin } from './wallets';
 import { goldValueUsd, sumParts, toAed, AED_PER_USD } from '@/lib/domain/networth';
 import { portfolioChange } from '@/lib/domain/change';
 
@@ -70,6 +70,7 @@ export async function loadNetWorth(s: Session): Promise<NetWorth> {
       const a = await loadAlgoAccount(w.address);
       return { error: !!a.error, assets: [{ symbol: 'ALGO', amount: a.algo, price: 'algo' as const }, ...a.tokens.map((t) => ({ ...t, price: 'usd' as const }))] };
     }
+    if (w.chain === 'zec') { const a = await loadZecAccount(w.address); return { error: !!a.error, assets: [{ symbol: 'ZEC', amount: a.zec, price: 'zec' as const }] }; }
     if (w.chain === 'ada') { const a = await loadAdaAccount(w.address); return { error: !!a.error, assets: [{ symbol: 'ADA', amount: a.ada, price: 'ada' as const }] }; }
     if (w.chain === 'btc') { const a = await loadBtcAccount(w.address); return { error: !!a.error, assets: [{ symbol: 'BTC', amount: a.btc, price: 'btc' as const }] }; }
     if (w.chain === 'eth') { const a = await loadEthAccount(w.address); return { error: !!a.error, assets: [{ symbol: 'ETH', amount: a.eth, price: 'eth' as const }, ...a.tokens] }; }
