@@ -11,8 +11,9 @@ import { Pool, PoolClient } from 'pg';
 const g = globalThis as unknown as { __jarvisPool?: Pool };
 // sslmode aus der URL entfernen: TLS wird unten explizit konfiguriert (Supabase-Pooler nutzt eigene CA)
 const rawUrl = process.env.DATABASE_URL ?? process.env.POSTGRES_URL ?? 'postgres://postgres@localhost/jarvis_dev?host=/tmp&port=54322';
-const dbUrl = rawUrl.replace(/([?&])sslmode=[^&]*&?/, '$1').replace(/[?&]$/, '');
-const remote = /supabase\.(co|com)/.test(dbUrl);
+const remote = /supabase\.(co|com)/.test(rawUrl);
+// Supabase-/Vercel-Integration hängt Parameter wie sslmode=…&supa=… an – TLS wird unten gesetzt, Rest ist unnötig
+const dbUrl = remote ? rawUrl.split('?')[0] : rawUrl;
 export const pool: Pool = g.__jarvisPool ?? new Pool({
   connectionString: dbUrl,
   // Verschlüsselt; Zertifikatsprüfung gegen die Supabase-CA, falls SUPABASE_DB_CA (PEM) gesetzt ist
