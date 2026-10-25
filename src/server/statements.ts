@@ -7,6 +7,7 @@ import { db } from './repo';
 import { withService } from './db';
 import { usingSupabase, type Session } from './auth';
 import { supabaseUser } from './supabase';
+import { dispatchAlerts, queueAlert } from './notify';
 import { callForTool, CLAUDE_MODEL, claudeAvailable, AI_CONSENT, fake, type Tool } from './claude';
 
 /**
@@ -277,6 +278,21 @@ export async function saveStatement(s: Session, documentId: string, a: Statement
   });
   await withService((q) => q(`select app.log_audit($1, 'jarvis', 'ai.statement_analyzed', 'document', $2, $3)`,
     [s.userId, documentId, JSON.stringify({ model: CLAUDE_MODEL(), period_to: a.period_to })])).catch(() => {});
+  // Warnung „Kontoauszug ausgewertet“ (falls eingeschaltet)
+  try {
+    const [cfg] = await withService((q) => q<{ on: boolean }>(`select coalesce((kinds->>'statement')::boolean, true) as on from alert_settings where user_id = $1 and (push_enabled or telegram_chat_id is not null)`, [s.userId]));
+    if (cfg?.on) {
+      const eur = (n: number) => `${n.toLocaleString('de-DE', { maximumFractionDigits: 0 })} ${a.currency === 'EUR' ? '€' : a.currency}`;
+      const month = new Date(`${a.period_to}T12:00:00Z`).toLocaleDateString('de-DE', { month: 'long', year: 'numeric', timeZone: 'UTC' });
+      const notes = a.notes.length ? `\n\nAuffällig:\n${a.notes.slice(0, 3).map((n) => `• ${n}`).join('\n')}` : '';
+      await queueAlert(s.userId, {
+        kind: 'statement', severity: a.notes.length ? 'warn' : 'info', url: '/leben/finanzen#kontoauszuege', dedupKey: `statement:${documentId}`,
+        title: `Kontoauszug ${month} ausgewertet`,
+        body: `${a.bank}: +${eur(Math.abs(a.total_in))} / −${eur(Math.abs(a.total_out))}, neuer Stand ${eur(a.closing_balance)}.${notes}`,
+      });
+      await dispatchAlerts(s.userId);
+    }
+  } catch (e) { console.error('[statement] alert', (e as Error).message); }
 }
 
 export interface StatementRow {

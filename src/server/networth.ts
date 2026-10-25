@@ -47,6 +47,27 @@ export interface NetWorth {
   gold: { aed: number; count: number; grams: number; price: GoldPrice | null; rows: Array<GoldRow & { aed: number | null }> };
 }
 
+/** Bestand einer Wallet: Hauptwährung + Tokens. price 'usd' = Stablecoin (1 USD). */
+export type Asset = { symbol: string; amount: number; price: PriceCoin | 'usd' };
+export async function walletAssets(w: { chain: Coin; address: string }): Promise<{ error: boolean; assets: Asset[] }> {
+  if (w.chain === 'algo') {
+    const a = await loadAlgoAccount(w.address);
+    return { error: !!a.error, assets: [{ symbol: 'ALGO', amount: a.algo, price: 'algo' as const }, ...a.tokens.map((t) => ({ ...t, price: 'usd' as const }))] };
+  }
+  if (w.chain === 'sol') { const a = await loadSolAccount(w.address); return { error: !!a.error, assets: [{ symbol: 'SOL', amount: a.sol, price: 'sol' as const }, ...a.tokens] }; }
+  if (w.chain === 'vet') { const a = await loadVetAccount(w.address); return { error: !!a.error, assets: [{ symbol: 'VET', amount: a.vet, price: 'vet' as const }] }; }
+  if (w.chain === 'dot') { const a = await loadDotAccount(w.address); return { error: !!a.error, assets: [{ symbol: 'DOT', amount: a.dot, price: 'dot' as const }] }; }
+  if (w.chain === 'ltc') { const a = await loadLtcAccount(w.address); return { error: !!a.error, assets: [{ symbol: 'LTC', amount: a.ltc, price: 'ltc' as const }] }; }
+  if (w.chain === 'xlm') { const a = await loadXlmAccount(w.address); return { error: !!a.error, assets: [{ symbol: 'XLM', amount: a.xlm, price: 'xlm' as const }, ...a.tokens.map((t) => ({ ...t, price: 'usd' as const }))] }; }
+  if (w.chain === 'atom') { const a = await loadAtomAccount(w.address); return { error: !!a.error, assets: [{ symbol: 'ATOM', amount: a.atom, price: 'atom' as const }] }; }
+  if (w.chain === 'zec') { const a = await loadZecAccount(w.address); return { error: !!a.error, assets: [{ symbol: 'ZEC', amount: a.zec, price: 'zec' as const }] }; }
+  if (w.chain === 'ada') { const a = await loadAdaAccount(w.address); return { error: !!a.error, assets: [{ symbol: 'ADA', amount: a.ada, price: 'ada' as const }] }; }
+  if (w.chain === 'btc') { const a = await loadBtcAccount(w.address); return { error: !!a.error, assets: [{ symbol: 'BTC', amount: a.btc, price: 'btc' as const }] }; }
+  if (w.chain === 'eth') { const a = await loadEthAccount(w.address); return { error: !!a.error, assets: [{ symbol: 'ETH', amount: a.eth, price: 'eth' as const }, ...a.tokens] }; }
+  const a = await loadXrpAccount(w.address);
+  return { error: !!a.error, assets: [{ symbol: 'XRP', amount: a.xrp, price: 'xrp' as const }] };
+}
+
 export async function loadNetWorth(s: Session): Promise<NetWorth> {
   const [rows, fx] = await Promise.all([
     db(s).run(async (q) => ({
@@ -63,26 +84,7 @@ export async function loadNetWorth(s: Session): Promise<NetWorth> {
   const accRows = rows.accounts.map((a) => ({ ...a, aed: a.amount_minor == null ? 0 : toAed(Number(a.amount_minor) / 100, a.currency, eurAed) }));
   const acc = sumParts(accRows.map((a) => a.aed));
 
-  // Jede Wallet → Liste von Beständen: Hauptwährung + Tokens. price 'usd' = Stablecoin (1 USD).
-  type Asset = { symbol: string; amount: number; price: PriceCoin | 'usd' };
-  const views: Array<{ error: boolean; assets: Asset[] }> = await Promise.all(rows.wallets.map(async (w) => {
-    if (w.chain === 'algo') {
-      const a = await loadAlgoAccount(w.address);
-      return { error: !!a.error, assets: [{ symbol: 'ALGO', amount: a.algo, price: 'algo' as const }, ...a.tokens.map((t) => ({ ...t, price: 'usd' as const }))] };
-    }
-    if (w.chain === 'sol') { const a = await loadSolAccount(w.address); return { error: !!a.error, assets: [{ symbol: 'SOL', amount: a.sol, price: 'sol' as const }, ...a.tokens] }; }
-    if (w.chain === 'vet') { const a = await loadVetAccount(w.address); return { error: !!a.error, assets: [{ symbol: 'VET', amount: a.vet, price: 'vet' as const }] }; }
-    if (w.chain === 'dot') { const a = await loadDotAccount(w.address); return { error: !!a.error, assets: [{ symbol: 'DOT', amount: a.dot, price: 'dot' as const }] }; }
-    if (w.chain === 'ltc') { const a = await loadLtcAccount(w.address); return { error: !!a.error, assets: [{ symbol: 'LTC', amount: a.ltc, price: 'ltc' as const }] }; }
-    if (w.chain === 'xlm') { const a = await loadXlmAccount(w.address); return { error: !!a.error, assets: [{ symbol: 'XLM', amount: a.xlm, price: 'xlm' as const }, ...a.tokens.map((t) => ({ ...t, price: 'usd' as const }))] }; }
-    if (w.chain === 'atom') { const a = await loadAtomAccount(w.address); return { error: !!a.error, assets: [{ symbol: 'ATOM', amount: a.atom, price: 'atom' as const }] }; }
-    if (w.chain === 'zec') { const a = await loadZecAccount(w.address); return { error: !!a.error, assets: [{ symbol: 'ZEC', amount: a.zec, price: 'zec' as const }] }; }
-    if (w.chain === 'ada') { const a = await loadAdaAccount(w.address); return { error: !!a.error, assets: [{ symbol: 'ADA', amount: a.ada, price: 'ada' as const }] }; }
-    if (w.chain === 'btc') { const a = await loadBtcAccount(w.address); return { error: !!a.error, assets: [{ symbol: 'BTC', amount: a.btc, price: 'btc' as const }] }; }
-    if (w.chain === 'eth') { const a = await loadEthAccount(w.address); return { error: !!a.error, assets: [{ symbol: 'ETH', amount: a.eth, price: 'eth' as const }, ...a.tokens] }; }
-    const a = await loadXrpAccount(w.address);
-    return { error: !!a.error, assets: [{ symbol: 'XRP', amount: a.xrp, price: 'xrp' as const }] };
-  }));
+  const views = await Promise.all(rows.wallets.map(walletAssets));
   const needed = [...new Set(views.flatMap((v) => v.assets.map((x) => x.price)).filter((p): p is PriceCoin => p !== 'usd'))];
   const prices = await coinPrices(needed);
   const priceAed = (x: Asset) => (x.price === 'usd' ? AED_PER_USD : prices[x.price]?.aed ?? null);
