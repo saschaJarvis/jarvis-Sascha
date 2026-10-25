@@ -20,6 +20,6 @@ export default defineConfig({
     url: 'http://localhost:3100/anmelden',
     reuseExistingServer: true,
     timeout: 120_000,
-    env: { ALLOW_SIGNUP: 'true', AUTH_PROVIDER: 'local', CLAUDE_FAKE: '1', CALENDAR_FAKE: '1', NEWS_FAKE: '1' },
+    env: { ALLOW_SIGNUP: 'true', AUTH_PROVIDER: 'local', CLAUDE_FAKE: '1', CALENDAR_FAKE: '1', NEWS_FAKE: '1', CRYPTO_FAKE: '1' },
   },
 });
