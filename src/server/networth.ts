@@ -75,7 +75,8 @@ export async function loadNetWorth(s: Session): Promise<NetWorth> {
   ]);
   const holdings: Partial<Record<string, number>> = {};
   const cryptoVals = views.map((v) => {
-    if (Number.isFinite(v.native.amount)) holdings[v.native.coin.toUpperCase()] = (holdings[v.native.coin.toUpperCase()] ?? 0) + v.native.amount;
+    const sym = v.native.coin.toUpperCase();
+    holdings[sym] = (holdings[sym] ?? 0) + (Number.isFinite(v.native.amount) ? v.native.amount : 0); // auch 0 zeigen
     for (const t of v.tokens) if (Number.isFinite(t.amount)) holdings[t.symbol] = (holdings[t.symbol] ?? 0) + t.amount;
     const p = prices[v.native.coin];
     if (v.error || !p) return null;

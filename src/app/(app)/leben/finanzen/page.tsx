@@ -100,7 +100,7 @@ export default async function FinancePage() {
           <div className="card mb-3 grid gap-1">
             <p className="eyebrow">Krypto gesamt</p>
             <p className="text-2xl font-bold">{nf(nw.crypto.aed, 0)} AED</p>
-            <p className="text-muted">{nw.eurAed ? `≈ ${nf(nw.crypto.aed / nw.eurAed, 0)} € · ` : ''}{Object.entries(nw.crypto.holdings).filter(([, v]) => v).map(([k, v]) => `${nf(v ?? 0, k === 'BTC' ? 8 : k === 'ETH' ? 4 : 2)} ${k}`).join(' · ')}</p>
+            <p className="text-muted">{nw.eurAed ? `≈ ${nf(nw.crypto.aed / nw.eurAed, 0)} € · ` : ''}{Object.entries(nw.crypto.holdings).filter(([, v]) => v != null).sort(([a], [b]) => ['BTC', 'ETH', 'XRP', 'USDT', 'USDC'].indexOf(a) - ['BTC', 'ETH', 'XRP', 'USDT', 'USDC'].indexOf(b)).map(([k, v]) => `${nf(v ?? 0, k === 'BTC' ? 8 : k === 'ETH' ? 4 : 2)} ${k}`).join(' · ')}</p>
             {nw.crypto.error && <p className="text-sm text-warn">Ein Teil ist gerade ohne Kurs oder Netz – nicht mitgezählt.</p>}
           </div>
         )}
@@ -138,6 +138,13 @@ export default async function FinancePage() {
                 {b && !b.error && (
                   <>
                     {b.pendingBtc !== 0 && <p className="text-xs text-warn">Unbestätigt: {b.pendingBtc > 0 ? '+' : ''}{nf(b.pendingBtc, 8)} BTC</p>}
+                    {b.btc === 0 && (
+                      <p className="notice notice-warn text-sm">
+                        {b.txCount > 0
+                          ? `Auf dieser Adresse liegt gerade 0 BTC – sie wurde schon ${b.txCount}× benutzt und ist inzwischen leer. Ledger Live nimmt für jeden Empfang eine neue Adresse; dein Bitcoin liegt also vermutlich auf neueren Adressen.`
+                          : 'Diese Adresse wurde noch nie benutzt (0 BTC). Ledger Live verteilt Bitcoin auf mehrere Adressen.'}
+                      </p>
+                    )}
                     <p className="text-xs text-muted">Zeigt nur diese eine Adresse. Ledger Live verteilt Bitcoin oft auf mehrere Adressen – stimmt der Betrag nicht mit Ledger Live überein, füge die weiteren Adressen hinzu.</p>
                     {b.moves.length > 0 && (
                       <details>
