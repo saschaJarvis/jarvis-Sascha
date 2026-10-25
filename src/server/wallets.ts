@@ -419,46 +419,66 @@ export async function loadXlmAccount(address: string): Promise<XlmAccount> {
   });
 }
 
-// ---------- Litecoin (Esplora-API wie bei Bitcoin) ----------
-export interface LtcAccount { address: string; ltc: number; pendingLtc: number; txCount: number; moves: Array<{ txid: string; date: Date | null; ltc: number; confirmed: boolean }>; error?: string }
-const LTC_APIS = ['https://litecoinspace.org/api'];
+// ---------- Litecoin ----------
+// Mehrere Quellen gleichzeitig, die erste gültige Antwort gewinnt (litecoinspace.org ist von Vercel aus oft langsam,
+// Blockchair drosselt Server-IPs mit HTTP 430).
+export interface LtcAccount { address: string; ltc: number; pendingLtc: number; txCount: number; moves: Array<{ txid: string; date: Date | null; ltc: number; confirmed: boolean }>; source?: string; error?: string }
+
+async function ltcEsplora(address: string): Promise<LtcAccount> {
+  const base = 'https://litecoinspace.org/api';
+  const [ar, tr] = await Promise.all([
+    fetch(`${base}/address/${address}`, { next: { revalidate: 120 }, signal: AbortSignal.timeout(12_000) }),
+    fetch(`${base}/address/${address}/txs`, { next: { revalidate: 120 }, signal: AbortSignal.timeout(12_000) }).catch(() => null),
+  ]);
+  if (!ar.ok) throw new Error(`litecoinspace HTTP ${ar.status}`);
+  const a = (await ar.json()) as EsploraAddr;
+  const txs = tr?.ok ? ((await tr.json()) as EsploraTx[]) : [];
+  const moves = txs.slice(0, 15).map((t) => {
+    const inn = t.vout.filter((o) => o.scriptpubkey_address === address).reduce((n, o) => n + o.value, 0);
+    const out = t.vin.filter((i) => i.prevout?.scriptpubkey_address === address).reduce((n, i) => n + (i.prevout?.value ?? 0), 0);
+    return { txid: t.txid, date: t.status.block_time ? new Date(t.status.block_time * 1000) : null, ltc: (inn - out) / LITOSHI_PER_LTC, confirmed: t.status.confirmed };
+  });
+  return {
+    address, ltc: (a.chain_stats.funded_txo_sum - a.chain_stats.spent_txo_sum) / LITOSHI_PER_LTC,
+    pendingLtc: (a.mempool_stats.funded_txo_sum - a.mempool_stats.spent_txo_sum) / LITOSHI_PER_LTC, txCount: a.chain_stats.tx_count, moves, source: 'litecoinspace.org',
+  };
+}
+
+async function ltcBlockcypher(address: string): Promise<LtcAccount> {
+  const r = await fetch(`https://api.blockcypher.com/v1/ltc/main/addrs/${address}?limit=50`, { headers: { accept: 'application/json' }, next: { revalidate: 300 }, signal: AbortSignal.timeout(12_000) });
+  if (!r.ok) throw new Error(`blockcypher HTTP ${r.status}`);
+  const j = (await r.json()) as { balance?: number; unconfirmed_balance?: number; n_tx?: number; txrefs?: Array<{ tx_hash: string; tx_input_n: number; value: number; confirmed?: string; confirmations?: number }>; unconfirmed_txrefs?: Array<{ tx_hash: string; tx_input_n: number; value: number; received?: string }> };
+  if (typeof j.balance !== 'number') throw new Error('blockcypher ohne Saldo');
+  // txrefs sind Ein-/Ausgänge je Transaktion → je tx_hash saldieren
+  const byTx = new Map<string, { ltc: number; date: Date | null; confirmed: boolean }>();
+  for (const t of [...(j.unconfirmed_txrefs ?? []).map((u) => ({ ...u, confirmed: u.received, confirmations: 0 })), ...(j.txrefs ?? [])]) {
+    const m = byTx.get(t.tx_hash) ?? { ltc: 0, date: t.confirmed ? new Date(t.confirmed) : null, confirmed: (t.confirmations ?? 0) > 0 };
+    m.ltc += (t.tx_input_n >= 0 ? -t.value : t.value) / LITOSHI_PER_LTC;
+    byTx.set(t.tx_hash, m);
+  }
+  const moves = [...byTx.entries()].slice(0, 15).map(([txid, m]) => ({ txid, ...m }));
+  return { address, ltc: j.balance / LITOSHI_PER_LTC, pendingLtc: (j.unconfirmed_balance ?? 0) / LITOSHI_PER_LTC, txCount: j.n_tx ?? 0, moves, source: 'BlockCypher' };
+}
+
+async function ltcBlockchair(address: string): Promise<LtcAccount> {
+  const r = await fetch(`https://api.blockchair.com/litecoin/dashboards/address/${address}?transaction_details=true&limit=15`, { headers: { accept: 'application/json' }, next: { revalidate: 300 }, signal: AbortSignal.timeout(12_000) });
+  if (!r.ok) throw new Error(`blockchair HTTP ${r.status}`);
+  const j = (await r.json()) as { data?: Record<string, { address?: { balance?: number; transaction_count?: number }; transactions?: Array<{ hash: string; time?: string; balance_change?: number; block_id?: number }> }> };
+  const d = j.data?.[address];
+  return {
+    address, ltc: (d?.address?.balance ?? 0) / LITOSHI_PER_LTC, pendingLtc: 0, txCount: d?.address?.transaction_count ?? 0, source: 'Blockchair',
+    moves: (d?.transactions ?? []).map((t) => ({ txid: t.hash, date: t.time ? new Date(`${t.time.replace(' ', 'T')}Z`) : null, ltc: (t.balance_change ?? 0) / LITOSHI_PER_LTC, confirmed: (t.block_id ?? -1) > 0 })),
+  };
+}
 
 export async function loadLtcAccount(address: string): Promise<LtcAccount> {
   if (fake()) return { address, ltc: 3, pendingLtc: 0, txCount: 1, moves: [{ txid: 'TESTLTC', date: new Date(Date.now() - 86_400_000), ltc: 3, confirmed: true }] };
   return cached(`ltc:${address}`, 120_000, async () => {
-    for (const base of LTC_APIS) {
-      try {
-        const [ar, tr] = await Promise.all([
-          fetch(`${base}/address/${address}`, { next: { revalidate: 120 }, signal: AbortSignal.timeout(7000) }),
-          fetch(`${base}/address/${address}/txs`, { next: { revalidate: 120 }, signal: AbortSignal.timeout(7000) }),
-        ]);
-        if (!ar.ok) { console.error('[ltc]', base, `HTTP ${ar.status}`); continue; }
-        const a = (await ar.json()) as EsploraAddr;
-        const txs = tr.ok ? ((await tr.json()) as EsploraTx[]) : [];
-        const moves = txs.slice(0, 15).map((t) => {
-          const inn = t.vout.filter((o) => o.scriptpubkey_address === address).reduce((n, o) => n + o.value, 0);
-          const out = t.vin.filter((i) => i.prevout?.scriptpubkey_address === address).reduce((n, i) => n + (i.prevout?.value ?? 0), 0);
-          return { txid: t.txid, date: t.status.block_time ? new Date(t.status.block_time * 1000) : null, ltc: (inn - out) / LITOSHI_PER_LTC, confirmed: t.status.confirmed };
-        });
-        return {
-          address, ltc: (a.chain_stats.funded_txo_sum - a.chain_stats.spent_txo_sum) / LITOSHI_PER_LTC,
-          pendingLtc: (a.mempool_stats.funded_txo_sum - a.mempool_stats.spent_txo_sum) / LITOSHI_PER_LTC, txCount: a.chain_stats.tx_count, moves,
-        };
-      } catch (e) { console.error('[ltc]', base, (e as Error).message); }
-    }
-    // Ausweich: Blockchair
     try {
-      const r = await fetch(`https://api.blockchair.com/litecoin/dashboards/address/${address}?transaction_details=true&limit=15`, { headers: { accept: 'application/json' }, next: { revalidate: 300 }, signal: AbortSignal.timeout(7000) });
-      if (r.ok) {
-        const j = (await r.json()) as { data?: Record<string, { address?: { balance?: number; transaction_count?: number }; transactions?: Array<{ hash: string; time?: string; balance_change?: number; block_id?: number }> }> };
-        const d = j.data?.[address];
-        return {
-          address, ltc: (d?.address?.balance ?? 0) / LITOSHI_PER_LTC, pendingLtc: 0, txCount: d?.address?.transaction_count ?? 0,
-          moves: (d?.transactions ?? []).map((t) => ({ txid: t.hash, date: t.time ? new Date(`${t.time.replace(' ', 'T')}Z`) : null, ltc: (t.balance_change ?? 0) / LITOSHI_PER_LTC, confirmed: (t.block_id ?? -1) > 0 })),
-        };
-      }
-      console.error('[ltc] blockchair', `HTTP ${r.status}`);
-    } catch (e) { console.error('[ltc] blockchair', (e as Error).message); }
-    return { address, ltc: NaN, pendingLtc: 0, txCount: 0, moves: [], error: 'Litecoin-Netz gerade nicht erreichbar.' };
+      return await Promise.any([ltcEsplora(address), ltcBlockcypher(address), ltcBlockchair(address)]);
+    } catch (e) {
+      for (const x of (e as AggregateError).errors ?? []) console.error('[ltc]', (x as Error).message);
+      return { address, ltc: NaN, pendingLtc: 0, txCount: 0, moves: [], error: 'Litecoin-Netz gerade nicht erreichbar.' };
+    }
   });
 }

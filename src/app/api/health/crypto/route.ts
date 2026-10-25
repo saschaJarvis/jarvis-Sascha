@@ -28,7 +28,7 @@ export async function GET() {
     btc: btc.error ? { ok: false, fehler: btc.error } : { ok: true, bewegungen: btc.moves.length },
     ada: ada.error ? { ok: false, fehler: ada.error } : { ok: true, ganzesKonto: ada.whole },
     algo: algo.error ? { ok: false, fehler: algo.error } : { ok: true },
-    ltc: ltc.error ? { ok: false, fehler: ltc.error } : { ok: true, bewegungen: ltc.moves.length },
+    ltc: ltc.error ? { ok: false, fehler: ltc.error } : { ok: true, quelle: ltc.source, bewegungen: ltc.moves.length },
     xlm: xlm.error ? { ok: false, fehler: xlm.error } : { ok: true, aktiviert: xlm.activated },
     atom: atom.error ? { ok: false, fehler: atom.error } : { ok: true },
     zec: zec.error ? { ok: false, fehler: zec.error } : { ok: true, quelle: zec.source, bewegungen: zec.moves.length },
