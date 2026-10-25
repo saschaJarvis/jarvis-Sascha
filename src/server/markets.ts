@@ -6,6 +6,8 @@ import 'server-only';
  * Fehlt ein Kurs, wird nichts geschätzt – der Posten gilt als „ohne Kurs“.
  */
 
+import { closeAt, relChange } from '@/lib/domain/change';
+
 const UA = { 'user-agent': 'Mozilla/5.0 (Jarvis read-only)', accept: 'application/json' };
 const YAHOO = ['https://query1.finance.yahoo.com', 'https://query2.finance.yahoo.com'];
 
@@ -103,6 +105,27 @@ export async function goldDe(): Promise<{ gold: { usd: number; eur: number }; si
       if (!ok) { console.error('[gold.de] Seite unerwartet aufgebaut'); return null; }
       return out;
     } catch (e) { console.error('[gold.de]', (e as Error).message); return null; }
+  });
+}
+
+export type Metal = 'gold' | 'silver' | 'platinum';
+const METAL_FUT: Record<Metal, string> = { gold: 'GC=F', silver: 'SI=F', platinum: 'PL=F' };
+
+/**
+ * 24-h-Kursänderung eines Edelmetalls (relativ, z. B. 0,012 = +1,2 %). Quelle: Yahoo-Stundenkerzen der COMEX/NYMEX-Futures –
+ * die relative Bewegung entspricht dem Spotpreis, der Wert selbst kommt weiter von gold.de / gold-api.com. null = nicht abrufbar.
+ */
+export async function metalChange24h(metal: Metal): Promise<number | null> {
+  return cached(`m24:${metal}`, 120_000, async () => {
+    try {
+      const j = await yahoo<ChartResp & { chart?: { result?: Array<{ timestamp?: number[] }> } }>(`/v8/finance/chart/${encodeURIComponent(METAL_FUT[metal])}?range=5d&interval=60m`);
+      const res = j.chart?.result?.[0] as (NonNullable<NonNullable<ChartResp['chart']>['result']>[number] & { timestamp?: number[] }) | undefined;
+      const now = res?.meta?.regularMarketPrice;
+      const ts = res?.timestamp ?? [];
+      const closes = res?.indicators?.quote?.[0]?.close ?? [];
+      if (!now || !ts.length) return null;
+      return relChange(now, closeAt(ts, closes, Math.floor(Date.now() / 1000) - 86_400));
+    } catch (e) { console.error('[metall 24h]', metal, (e as Error).message); return null; }
   });
 }
 

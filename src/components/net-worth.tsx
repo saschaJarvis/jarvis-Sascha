@@ -41,6 +41,9 @@ export function NetWorthBlock({ nw, compact = false }: { nw: NetWorth; compact?:
       </dl>
 
       {nw.crypto.change && <CryptoChange ch={nw.crypto.change} asOf={nw.crypto.asOf} />}
+      {nw.gold.change && <CryptoChange ch={nw.gold.change} label="Gold 24 h" />}
+      {nw.silver.change && <CryptoChange ch={nw.silver.change} label="Silber 24 h" />}
+      {nw.platinum.change && <CryptoChange ch={nw.platinum.change} label="Platin 24 h" />}
 
       {nw.missing > 0 && <p className="text-xs text-warn">▲ {nw.missing} Posten ohne aktuellen Kurs – nicht mitgezählt.</p>}
       {empty && <p className="text-sm text-muted">Noch nichts erfasst. Konten, Krypto, Gold, Platin, Silber und Aktien trägst du unter Finanzen ein.</p>}

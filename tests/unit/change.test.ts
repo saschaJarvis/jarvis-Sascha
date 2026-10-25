@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { portfolioChange, priceAgo, relChange } from '../../src/lib/domain/change';
+import { closeAt, portfolioChange, priceAgo, relChange } from '../../src/lib/domain/change';
 
 test('24 h: Preis vor 24 h aus Stundenkerzen, relative Änderung', () => {
   const now = 1_800_000_000;
@@ -17,4 +17,13 @@ test('Portfolio: +10 % auf 1.100 € = +100 € (+10 %); Stablecoins ohne Änder
   assert.ok(Math.abs(b.abs - 100) < 1e-9 && Math.abs((b.pct ?? 0) - 0.05) < 1e-12);
   const c = portfolioChange([{ valueNow: 900, change: -0.1 }]);
   assert.ok(Math.abs(c.abs + 100) < 1e-9);
+});
+
+test('Edelmetalle: Kurs vor 24 h = letzter Stundenschluss bis dahin; Wochenende → letzter Handelskurs', () => {
+  const ts = [1000, 4600, 8200, 11800];
+  const closes = [10, null, 12, 13];
+  assert.equal(closeAt(ts, closes, 9000), 12);
+  assert.equal(closeAt(ts, closes, 5000), 10);         // null-Kerze übersprungen
+  assert.equal(closeAt(ts, closes, 500), null);        // nichts davor
+  assert.equal(closeAt(ts, closes, 11800 + 5 * 86_400), null); // zu alt
 });

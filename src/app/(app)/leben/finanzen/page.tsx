@@ -397,6 +397,7 @@ function MetalSection({ title, metal, data, eurAed }: { title: string; metal: 'g
       {data.count > 0 && (
         <p className="mb-3 text-sm"><span className="text-2xl font-bold">{nf(data.aed, 0)} AED</span>{eurAed && <span className="text-muted"> ≈ {nf(data.aed / eurAed, 0)} € · {data.pieces} Stück · {nf(oz, oz < 10 ? 3 : 1)} oz ({nf(data.grams, 1)} g)</span>}</p>
       )}
+      {data.change && <div className="mb-3"><CryptoChange ch={data.change} label="24 h" /></div>}
       {data.cost && gain != null && (
         <p className="mb-3 text-sm">Gekauft für <b>{nf(data.cost.eur, 0)} €</b>{data.cost.rows < data.count ? ` (${data.cost.rows} von ${data.count} Posten mit Kaufpreis)` : ''} · heute {nf(data.cost.valueEur, 0)} € · <span className={gain >= 0 ? 'text-good' : 'text-bad'}>{gain >= 0 ? '+' : '−'}{nf(Math.abs(gain), 0)} € ({gain >= 0 ? '+' : '−'}{nf(Math.abs(gain / data.cost.eur) * 100, 1)} %)</span></p>
       )}

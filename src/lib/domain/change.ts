@@ -9,6 +9,18 @@ export function priceAgo(candles: Array<[number, string, string, string, string,
   return Number.isFinite(v) && v > 0 ? v : null;
 }
 
+/** Stundenkurse (Zeitstempel + Schlusskurse) → Kurs zum Zeitpunkt target: letzter Schluss bis dahin.
+ *  Ist der Markt geschlossen (Wochenende), ist das der letzte Handelskurs – die 24-h-Änderung ist dann korrekt ≈ 0. */
+export function closeAt(ts: number[], closes: Array<number | null>, targetSec: number, maxAgeSec = 4 * 86_400): number | null {
+  let v: number | null = null;
+  for (let i = 0; i < ts.length; i++) {
+    const c = closes[i];
+    if (ts[i] > targetSec) break;
+    if (typeof c === 'number' && c > 0 && targetSec - ts[i] <= maxAgeSec) v = c;
+  }
+  return v;
+}
+
 /** Relative Veränderung (z. B. 0,023 = +2,3 %) aus Preis jetzt und vor 24 h */
 export const relChange = (now: number, ago: number | null): number | null => (ago && ago > 0 ? now / ago - 1 : null);
 
