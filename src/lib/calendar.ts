@@ -3,6 +3,7 @@
  * Zeigt Jarvis-Aufgaben mit Frist und – falls verbunden – Termine aus externen Kalendern.
  */
 import { holidaysBetween, type Holiday } from './holidays';
+import { observancesBetween, type Observance } from './special-days';
 
 export interface CalTask { id: string; title: string; due_at: Date | string | null; domain: string; due_is_hard: boolean }
 export interface CalExternal { uid: string; title: string; start: Date; end: Date | null; allDay: boolean; dayFrom?: number; dayTo?: number; location: string | null; source: string }
@@ -66,6 +67,8 @@ export function buildCalendar(tasks: readonly CalTask[], tz: string, now: Date, 
   }
 
   const hol = new Map<number, Holiday>(holidaysBetween(monday - weeksBack * 7, monday + weeksAhead * 7 + 6, holidayState).map((h) => [h.dn, h]));
+  const obs = new Map<number, Observance[]>();
+  for (const o of observancesBetween(monday - weeksBack * 7, monday + weeksAhead * 7 + 6)) obs.set(o.dn, [...(obs.get(o.dn) ?? []), o]);
   const weeks = [];
   for (let w = -weeksBack; w <= weeksAhead; w++) {
     const start = monday + w * 7;
@@ -77,7 +80,8 @@ export function buildCalendar(tasks: readonly CalTask[], tz: string, now: Date, 
         .map(({ sort: _s, ...x }) => x);
       const h = hol.get(dn);
       return { key: dn, wd: WD[dow], wdLong: WD_LONG[dow], date: `${ddmm(dn)}${new Date(dn * DAY).getUTCFullYear()}`, isToday: dn === today, isPast: dn < today,
-        holiday: h ? { name: h.name, scope: h.scope } : null, items };
+        holiday: h ? { name: h.name, scope: h.scope } : null,
+        observances: (obs.get(dn) ?? []).map((o) => ({ name: o.name, note: o.note, kind: o.kind })), items };
     });
     weeks.push({ offset: w, label: `KW ${isoWeek(start)} · ${ddmm(start)} – ${ddmm(start + 6)}`, days });
   }

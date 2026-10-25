@@ -4,7 +4,8 @@ import { useRef, useState } from 'react';
 
 import type { CalItem } from '@/lib/calendar';
 export type { CalItem };
-export interface CalDay { key: number; wd: string; wdLong: string; date: string; isToday: boolean; isPast: boolean; holiday: { name: string; scope: string } | null; items: CalItem[] }
+export interface CalDay { key: number; wd: string; wdLong: string; date: string; isToday: boolean; isPast: boolean; holiday: { name: string; scope: string } | null;
+  observances: Array<{ name: string; note: string | null; kind: 'season' | 'tradition' | 'clock' }>; items: CalItem[] }
 export interface CalWeek { offset: number; label: string; days: CalDay[] }
 
 /** Wochenkalender mit Reitern Mo–So; Pfeile blättern zwischen den Wochen (ohne Neuladen). */
@@ -59,7 +60,8 @@ export function WeekCalendar({ weeks, domainLabel, hasSources = true }: { weeks:
                 {d.items.length || '·'}
               </span>
               {d.isToday && <span className="absolute -top-px left-1/2 h-0.5 w-6 -translate-x-1/2 bg-sea" aria-hidden="true" />}
-              {d.holiday && <span className="mono absolute right-0.5 top-0.5 text-[.5rem] font-bold text-warn" title={d.holiday.name} aria-label={`Feiertag: ${d.holiday.name}`}>FT</span>}
+              {d.holiday ? <span className="mono absolute right-0.5 top-0.5 text-[.5rem] font-bold text-warn" title={d.holiday.name} aria-label={`Feiertag: ${d.holiday.name}`}>FT</span>
+                : d.observances.length > 0 && <span className="absolute right-1 top-0.5 text-[.55rem] text-glow" title={d.observances.map((o) => o.name).join(', ')} aria-label={d.observances.map((o) => o.name).join(', ')}>✦</span>}
             </button>
           );
         })}
@@ -73,6 +75,12 @@ export function WeekCalendar({ weeks, domainLabel, hasSources = true }: { weeks:
             <span className="mono text-[.6rem] uppercase tracking-wider text-muted">{day.holiday.scope === 'bundesweit' ? 'Feiertag in ganz Deutschland · Ämter, Banken, Post geschlossen' : 'Feiertag in Rheinland-Pfalz · Ämter in Mainz/RLP geschlossen'}</span>
           </p>
         )}
+        {day.observances.map((o) => (
+          <p key={o.name} className="mb-2 flex flex-wrap items-baseline gap-x-2 border-l-2 border-sea/60 bg-sea-soft/40 px-3 py-1.5">
+            <span className="font-semibold">{o.kind === 'season' ? '☀' : o.kind === 'clock' ? '⏱' : '✦'} {o.name}</span>
+            {o.note && <span className="mono text-[.6rem] uppercase tracking-wider text-muted">{o.note}</span>}
+          </p>
+        ))}
         {day.items.length ? (
           <ol className="grid gap-1.5">
             {day.items.map((t) => (
