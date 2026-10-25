@@ -17,6 +17,10 @@ export async function loginAction(_: FormState, fd: FormData): Promise<FormState
   } catch (e) {
     return { error: (e as Error).message };
   }
+  if (!(await getSession())) {
+    await signOut().catch(() => undefined);
+    return { error: 'Dieses Konto ist für Jarvis nicht freigeschaltet.' };
+  }
   redirect('/sicherheit/code');
 }
 

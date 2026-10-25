@@ -26,7 +26,19 @@ const STEP_UP_MINUTES = 10;
 export const usingSupabase = () => process.env.AUTH_PROVIDER === 'supabase';
 const p = () => (usingSupabase() ? supa : local);
 
-export const getSession = (): Promise<Session | null> => p().getSession();
+/**
+ * Freigabeliste: Ist ALLOWED_USER_IDS gesetzt (kommagetrennte Nutzer-IDs), gilt jedes andere Konto als
+ * nicht angemeldet – auch wenn es irgendwie (z. B. direkt über die Auth-Schnittstelle) angelegt wurde.
+ */
+export function isAllowedUser(userId: string): boolean {
+  const list = (process.env.ALLOWED_USER_IDS ?? '').split(',').map((x) => x.trim()).filter(Boolean);
+  return list.length === 0 || list.includes(userId);
+}
+
+export const getSession = async (): Promise<Session | null> => {
+  const s = await p().getSession();
+  return s && isAllowedUser(s.userId) ? s : null;
+};
 export const signUp = (email: string, password: string) => p().signUp(email, password);
 export const signIn = (email: string, password: string) => p().signIn(email, password);
 export const signOut = () => p().signOut();
