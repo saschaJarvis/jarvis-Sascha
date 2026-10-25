@@ -15,3 +15,10 @@ test('LTV: fertiges Objekt, Expat, erste Immobilie', () => {
   assert.equal(checkLtv({ buyer: 'expat', stage: 'completed', use: 'first_home', valueAed: 6_000_000, plannedLtvPct: 75 }).maxLtvPct, 70);
   assert.equal(checkLtv({ buyer: 'expat', stage: 'completed', use: 'second_or_investment', valueAed: 1_000_000, plannedLtvPct: 60 }).withinLimit, true);
 });
+
+test('Status „übergeben“ → Grenze für fertige Objekte; unbekannt bleibt vorsichtig Off-Plan', async () => {
+  const { ltvStage } = await import('../../src/lib/domain/property');
+  assert.equal(ltvStage('handed_over'), 'completed');
+  assert.equal(ltvStage(null), 'off_plan');
+  assert.equal(checkLtv({ buyer: 'expat', stage: ltvStage('handed_over'), use: 'first_home', valueAed: 0, plannedLtvPct: 60 }).withinLimit, true);
+});

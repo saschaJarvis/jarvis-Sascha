@@ -27,6 +27,6 @@
 - [ ] Wegzugs-Abhängigkeiten als Vorlage (R13: Steuerberater → Abmeldung; KV UAE → KV DE Ende; Visum → Container)
 
 ## Hinweise für Sascha (aus der Recherche, ohne Gewähr – bitte fachlich bestätigen lassen)
-- Geplante ~60 % Finanzierung: Die UAE-Zentralbank erlaubt bei Off-Plan-Käufen höchstens 50 %. Mit Bank klären.
+- Wohnung ist übergeben (kein Off-Plan, laut Sascha 25.10.2026): geplante ~60 % Finanzierung liegt unter der CBUAE-Grenze für fertige Objekte (Expat, erste Immobilie: 80 % unter AED 5 Mio.). Verbindlich nur das Bankangebot. Title Deed hochladen.
 - Einwurf-Einschreiben: Online-Status beweist den Zugang nicht – Auslieferungsbeleg anfordern.
 - Steuerberater **vor** Abmeldung/Gewerbeabmeldung.

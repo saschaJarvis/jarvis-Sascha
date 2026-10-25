@@ -35,6 +35,11 @@ export function ltvLimit(i: LtvInput): { max: number; rule: string } {
     : { max: 75, rule: 'UAE-Staatsangehörige, erste Immobilie über 5 Mio. AED: max. 75 %' };
 }
 
+/** Bauphase aus der Datenbank → LTV-Stufe. Unbekannt wird vorsichtig als Off-Plan gewertet. */
+export const ltvStage = (stage: string | null | undefined): LtvInput['stage'] => (stage === 'handed_over' ? 'completed' : 'off_plan');
+
+export const STAGE_LABEL: Record<string, string> = { off_plan: 'Off-Plan (im Bau)', handed_over: 'Übergeben' };
+
 export function checkLtv(i: LtvInput): LtvCheck {
   const { max, rule } = ltvLimit(i);
   const within = i.plannedLtvPct <= max;

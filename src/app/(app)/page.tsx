@@ -5,7 +5,7 @@ import { getFx, getWeather } from '@/server/ext';
 import { buildTodayView, scoreTask } from '@/lib/domain/priority';
 import { primaryActionFor } from '@/lib/domain/taskStateMachine';
 import { CANCELLATION_STEPS_DE } from '@/lib/domain/cancellationStateMachine';
-import { checkLtv } from '@/lib/domain/property';
+import { checkLtv, ltvStage, STAGE_LABEL } from '@/lib/domain/property';
 import { Certainty, formatDue } from '@/components/ui';
 import { Empty, Metric, Panel, Segments } from '@/components/hud';
 import { MoonCore, MoonFacts } from '@/components/moon-core';
@@ -21,7 +21,7 @@ import { loadExternalEvents } from '@/server/calendars';
 import { DOMAIN_LABEL as DOMAIN } from '@/lib/labels';
 import { claudeAvailable, AI_CONSENT } from '@/server/claude';
 
-const DUBAI_DOCS = 6; // SPA, Oqood, Zahlungsplan, Bankangebot, Service Charge, Übergabe
+const DUBAI_DOCS = 6; // je nach Status: SPA, Oqood/Title Deed, Zahlungsplan/-nachweise, Bankangebot, Service Charge, Übergabe
 
 interface Stats {
   contracts: number; contracts_demo: number; accounts: number; transactions: number; documents: number; uae_docs: number;
@@ -52,8 +52,8 @@ export default async function BridgePage() {
       const cancellations = await q<{ id: string; contract_id: string; name: string; status: string; is_demo: boolean }>(
         `select r.id, r.contract_id, c.name, r.status::text status, r.is_demo from cancellation_requests r join contracts c on c.id = r.contract_id
           where r.deleted_at is null and r.status <> 'CLOSED' order by r.updated_at desc limit 4`);
-      const property = await q<{ project_name: string; location: string | null; financing_ltv_pct: string | null }>(
-        'select project_name, location, financing_ltv_pct from properties where deleted_at is null order by created_at limit 1');
+      const property = await q<{ project_name: string; location: string | null; financing_ltv_pct: string | null; stage: string | null }>(
+        'select project_name, location, financing_ltv_pct, stage from properties where deleted_at is null order by created_at limit 1');
       const log = await q<{ seq: string; actor: string; action: string; created_at: Date }>(
         'select seq, actor, action, created_at from audit_events order by seq desc limit 4');
       return { stats, cancellations, property: property[0], log };
@@ -93,7 +93,7 @@ export default async function BridgePage() {
   const daysToMove = profile.moving_date && profile.moving_date_certainty === 'verified'
     ? Math.ceil((Date.parse(`${profile.moving_date}T00:00:00Z`) - now.getTime()) / 86_400_000) : null;
   const ltv = extra.property?.financing_ltv_pct
-    ? checkLtv({ buyer: 'expat', stage: 'off_plan', use: 'first_home', valueAed: 0, plannedLtvPct: Number(extra.property.financing_ltv_pct) }) : null;
+    ? checkLtv({ buyer: 'expat', stage: ltvStage(extra.property.stage), use: 'first_home', valueAed: 0, plannedLtvPct: Number(extra.property.financing_ltv_pct) }) : null;
 
   const briefing = [
     `${hello}, ${name}. Es ist ${dateLong}, ${hhmm(now, 'Asia/Dubai')} Uhr in Dubai und ${hhmm(now, 'Europe/Berlin')} Uhr in Mainz${weather ? `, ${weather.tempC} °C in ${weather.place}` : ''}.`,
@@ -284,14 +284,14 @@ export default async function BridgePage() {
           <Panel n="05" title="Dubai" href="/leben/dubai" aside={daysToMove !== null ? `T – ${daysToMove}` : 'Umzugsdatum offen'}>
             <div className="grid grid-cols-2 gap-3">
               <Metric label="Umzugsaufgaben" value={relocation.length} sub="offen" tone="sea" href="/leben/dubai" />
-              <Metric label="Unterlagen Wohnung" value={`${Math.min(extra.stats.uae_docs, DUBAI_DOCS)}/${DUBAI_DOCS}`} sub="SPA, Oqood, Bank …" tone={extra.stats.uae_docs >= DUBAI_DOCS ? 'good' : 'warn'} href="/leben/dokumente?ordner=uae_property" />
+              <Metric label="Unterlagen Wohnung" value={`${Math.min(extra.stats.uae_docs, DUBAI_DOCS)}/${DUBAI_DOCS}`} sub={extra.property?.stage === 'handed_over' ? 'SPA, Title Deed, Bank …' : 'SPA, Oqood, Bank …'} tone={extra.stats.uae_docs >= DUBAI_DOCS ? 'good' : 'warn'} href="/leben/dokumente?ordner=uae_property" />
             </div>
             <Segments value={Math.min(extra.stats.uae_docs, DUBAI_DOCS)} total={DUBAI_DOCS} tone="warn" />
             {extra.property && (
-              <p className="text-sm"><span className="font-semibold">{extra.property.project_name}</span>{extra.property.location ? <span className="text-muted"> · {extra.property.location}</span> : null}</p>
+              <p className="text-sm"><span className="font-semibold">{extra.property.project_name}</span>{extra.property.location ? <span className="text-muted"> · {extra.property.location}</span> : null}{extra.property.stage ? <span className="text-muted"> · {STAGE_LABEL[extra.property.stage]}</span> : null}</p>
             )}
             {ltv && !ltv.withinLimit && (
-              <p className="notice notice-warn text-[.82rem]">▲ Geplant {Number(extra.property!.financing_ltv_pct)} % Finanzierung – CBUAE erlaubt bei Off-Plan höchstens {ltv.maxLtvPct} %. Mit der Bank klären.</p>
+              <p className="notice notice-warn text-[.82rem]">▲ Geplant {Number(extra.property!.financing_ltv_pct)} % Finanzierung – CBUAE erlaubt hier höchstens {ltv.maxLtvPct} %. Mit der Bank klären.</p>
             )}
           </Panel>
 

@@ -81,7 +81,7 @@ async function buildContext(s: Awaited<ReturnType<typeof requireUser>>, tz: stri
     const docs = await q<{ title: string; folder: Folder; issuer: string | null; expires_on: string | null; extracted: Record<string, unknown> }>(
       `select title, folder, issuer, expires_on, extracted from documents where deleted_at is null order by created_at desc limit 60`);
     const [prop] = await q<Record<string, unknown>>(
-      `select project_name, developer, location, size_sqft, view_text, financing_ltv_pct, expected_completion from properties where deleted_at is null limit 1`);
+      `select project_name, developer, location, size_sqft, view_text, financing_ltv_pct, expected_completion, stage from properties where deleted_at is null limit 1`);
     const lines: string[] = [];
     lines.push(`Name: ${prof?.display_name ?? 'Sascha'}; Zeitzone ${prof?.timezone}; Umzugsdatum: ${prof?.moving_date ?? 'offen'} (${prof?.moving_date_certainty ?? 'unbestätigt'})`);
     lines.push(`\nOffene Aufgaben (${tasks.length}):`);
