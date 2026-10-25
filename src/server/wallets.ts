@@ -285,9 +285,9 @@ export async function loadAlgoAccount(address: string): Promise<AlgoAccount> {
   return cached(`algo:${address}`, 120_000, async () => {
     for (const base of ALGO_NODES) {
       try {
-        const r = await fetch(`${base}/v2/accounts/${address}?exclude=created-apps,created-assets,apps-local-state`, { cache: 'no-store', signal: AbortSignal.timeout(6000) });
+        const r = await fetch(`${base}/v2/accounts/${address}`, { cache: 'no-store', signal: AbortSignal.timeout(6000) });
         if (r.status === 404) return { address, algo: 0, minBalance: 0, tokens: [], online: false };
-        if (!r.ok) continue;
+        if (!r.ok) { console.error('[algo]', base, `HTTP ${r.status}`); continue; }
         const j = (await r.json()) as { amount?: number; 'min-balance'?: number; status?: string; assets?: Array<{ 'asset-id': number; amount: number }> };
         const tokens = (j.assets ?? []).filter((a) => ALGO_STABLES[a['asset-id']] && a.amount > 0)
           .map((a) => ({ symbol: ALGO_STABLES[a['asset-id']].symbol, amount: a.amount / 10 ** ALGO_STABLES[a['asset-id']].decimals }));
