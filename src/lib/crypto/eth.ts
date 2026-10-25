@@ -38,6 +38,7 @@ export const ETH_TOKENS = [
   { symbol: 'QNT', contract: '0x4a220E6096B25EADb88358cb44068A3248254675', decimals: 18, price: 'qnt' },
   { symbol: 'FET', contract: '0xaea46A60368A7bD060eec7DF8CBa43b7EF41Ad85', decimals: 18, price: 'fet' }, // Fetch.ai (ASI Alliance)
   { symbol: 'LINK', contract: '0x514910771AF9Ca656af840dff83E8264EcF986CA', decimals: 18, price: 'link' }, // Chainlink
+  { symbol: 'GALA', contract: '0xd1d2Eb1B1e90B638588728b4130137D262C87cae', decimals: 8, price: 'gala' }, // Gala (v2)
 ] as const;
 
 /** ABI-String aus eth_call (z. B. symbol()) dekodieren */
