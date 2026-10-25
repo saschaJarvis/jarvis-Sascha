@@ -19,7 +19,9 @@ export default async function NewsPage({ searchParams }: { searchParams: Promise
   return (
     <div className="grid gap-4">
       <header className="flex items-center gap-3">
-        <img src="/api/logo/werder" alt="" width={36} height={36} className="h-9 w-9 rounded-md bg-white/90 p-1" />
+        {topic.logo
+          ? <img src={`/api/logo/${topic.logo}`} alt="" width={36} height={36} className="h-9 w-9 rounded-md bg-white/90 p-1" />
+          : <span className="flex h-9 w-9 items-center justify-center rounded-md border border-line text-xl" aria-hidden="true">{topic.emoji}</span>}
         <div>
           <p className="eyebrow">News</p>
           <h1 className="text-[1.6rem] font-bold leading-tight">{topic.name}</h1>
@@ -27,7 +29,7 @@ export default async function NewsPage({ searchParams }: { searchParams: Promise
       </header>
 
       {TOPICS.length > 1 && (
-        <nav aria-label="Themen" className="flex gap-1 overflow-x-auto">
+        <nav aria-label="Themen" className="-mx-4 flex gap-1 overflow-x-auto px-4">
           {TOPICS.map((t) => (
             <Link key={t.key} href={`/news?thema=${t.key}`} className={`mono shrink-0 border px-3 py-1.5 text-[.7rem] uppercase tracking-widest ${t.key === topic.key ? 'border-sea text-sea' : 'border-line text-muted'}`}>{t.emoji} {t.name}</Link>
           ))}
@@ -41,7 +43,7 @@ export default async function NewsPage({ searchParams }: { searchParams: Promise
         {sources.map((s) => (
           <Link key={s.source.key} href={href(s.source.key)} aria-current={active === s.source.key ? 'page' : undefined}
             className={`mono flex shrink-0 items-center gap-1.5 border px-2.5 py-1.5 text-[.68rem] uppercase tracking-widest ${active === s.source.key ? 'border-sea bg-sea-soft text-sea' : 'border-line text-muted'}`}>
-            <img src={`/api/logo/${s.source.key}`} alt="" width={16} height={16} className="h-4 w-4 rounded-sm bg-white p-px" />
+            {s.source.perItemLogo ? <span aria-hidden="true">🔎</span> : <img src={`/api/logo/${s.source.key}`} alt="" width={16} height={16} className="h-4 w-4 rounded-sm bg-white p-px" />}
             {s.source.name} <span className={s.error ? 'text-bad' : 'text-muted'}>{s.error ? '!' : s.items.length}</span>
           </Link>
         ))}
@@ -63,8 +65,8 @@ export default async function NewsPage({ searchParams }: { searchParams: Promise
                   {n.thumb && <img src={n.thumb} alt="" width={128} height={72} loading="lazy" className="h-[72px] w-[128px] shrink-0 rounded-sm object-cover" />}
                   <span className="min-w-0 flex-1">
                     <span className="mono mb-1 flex items-center gap-1.5 text-[.62rem] uppercase tracking-widest text-muted">
-                      <img src={`/api/logo/${n.sourceKey}`} alt="" width={14} height={14} className="h-3.5 w-3.5 rounded-sm bg-white p-px" />
-                      <span className="text-sea">{src?.name ?? n.publisher}</span>
+                      <img src={src?.perItemLogo && n.publisherDomain ? `/api/logo/d:${encodeURIComponent(n.publisherDomain)}` : `/api/logo/${n.sourceKey}`} alt="" width={14} height={14} className="h-3.5 w-3.5 rounded-sm bg-white p-px" />
+                      <span className="text-sea">{src?.perItemLogo ? (n.publisher ?? src.name) : (src?.name ?? n.publisher)}</span>
                       {n.date && <span suppressHydrationWarning>· {timeAgo(n.date, now)}</span>}
                     </span>
                     <span className="block font-semibold leading-snug">{n.title}</span>
@@ -76,7 +78,7 @@ export default async function NewsPage({ searchParams }: { searchParams: Promise
           })}
         </ul>
       )}
-      <p className="text-xs text-muted">Schlagzeilen aus öffentlichen Feeds (kicker, Transfermarkt, BILD und SPORT BILD über Google News; YouTube-Kanal von Werder). Tippen öffnet den Artikel auf der Originalseite. Aktualisierung alle ~15 Minuten.</p>
+      <p className="text-xs text-muted">Schlagzeilen aus öffentlichen Feeds (Zeitungen über Google News, Videos direkt von YouTube). Tippen öffnet den Artikel auf der Originalseite. Aktualisierung alle ~15 Minuten. 🔎 = Suche über viele Medien, Logo je Artikel.</p>
     </div>
   );
 }

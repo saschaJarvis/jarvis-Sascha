@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { TOPICS } from '@/lib/news';
+import { isDomain, TOPICS } from '@/lib/news';
 
 /**
  * Logos der Nachrichtenquellen = deren eigene Website-Icons (Favicons), über den Server geladen
@@ -12,9 +12,12 @@ const DOMAINS: Record<string, string> = Object.fromEntries([
 
 export async function GET(_: Request, { params }: { params: Promise<{ key: string }> }) {
   const { key } = await params;
-  const domain = DOMAINS[key];
+  // Feste Quellen per Schlüssel; Verlage gemischter Quellen als „d:domain“ – dann nur über den Google-Favicon-Dienst (fester Host)
+  const pub = key.startsWith('d:') ? decodeURIComponent(key.slice(2)).toLowerCase() : null;
+  const domain = pub ? (isDomain(pub) ? pub : null) : DOMAINS[key];
   if (!domain) return new NextResponse('unbekannt', { status: 404 });
-  const tries = [`https://www.google.com/s2/favicons?domain=${domain}&sz=64`, `https://${domain}/favicon.ico`];
+  const tries = pub ? [`https://www.google.com/s2/favicons?domain=${domain}&sz=64`]
+    : [`https://www.google.com/s2/favicons?domain=${domain}&sz=64`, `https://${domain}/favicon.ico`];
   for (const url of tries) {
     try {
       const r = await fetch(url, { next: { revalidate: 7 * 86_400 }, signal: AbortSignal.timeout(5000) });

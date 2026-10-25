@@ -24,6 +24,12 @@ test('News: Werder Bremen mit allen Quellen, Filter je Quelle, Links öffnen ext
   expect(logo.ok()).toBeTruthy();
   expect(logo.headers()['content-type']).toMatch(/^image\//);
   expect((await page.request.get('/api/logo/evil')).status()).toBe(404);
+  // Weitere Themen als Reiter
+  const themen = page.getByRole('navigation', { name: 'Themen' });
+  for (const t of ['Werder Bremen', 'Dubai', 'Dubai Islands & Immobilien', 'Bundesliga']) await expect(themen.getByRole('link', { name: new RegExp(t) }).first()).toBeVisible();
+  await themen.getByRole('link', { name: /Bundesliga/ }).click();
+  await expect(page.getByRole('heading', { name: 'Bundesliga' })).toBeVisible();
+  await expect(page.getByText('Test-Schlagzeile Sportschau: Werder gewinnt')).toBeVisible();
   await page.goto('/news');
   await page.screenshot({ path: 'docs/screens/6-news.png', fullPage: false });
 });

@@ -12,20 +12,50 @@ export interface NewsSource {
   feeds: string[];          // Kandidaten, der erste funktionierende gewinnt
   youtubeHandle?: string;   // YouTube: Kanal über @Handle auflösen
   match?: RegExp;           // optional: nur Beiträge, die passen
+  perItemLogo?: boolean;    // gemischte Quelle (Google News): Logo je Artikel vom jeweiligen Verlag
 }
-export interface NewsTopic { key: string; name: string; emoji: string; sources: NewsSource[] }
+export interface NewsTopic { key: string; name: string; emoji: string; logo?: string; sources: NewsSource[] }
 
-const gnews = (q: string) => `https://news.google.com/rss/search?q=${encodeURIComponent(q)}&hl=de&gl=DE&ceid=DE:de`;
+const gnews = (q: string, lang: 'de' | 'en' = 'de') => lang === 'de'
+  ? `https://news.google.com/rss/search?q=${encodeURIComponent(q)}&hl=de&gl=DE&ceid=DE:de`
+  : `https://news.google.com/rss/search?q=${encodeURIComponent(q)}&hl=en-AE&gl=AE&ceid=AE:en`;
 
 export const TOPICS: NewsTopic[] = [
   {
-    key: 'werder', name: 'Werder Bremen', emoji: '💚',
+    key: 'werder', name: 'Werder Bremen', emoji: '💚', logo: 'werder',
     sources: [
       { key: 'kicker', name: 'kicker', domain: 'kicker.de', feeds: [gnews('"Werder" site:kicker.de when:14d')] },
       { key: 'transfermarkt', name: 'Transfermarkt', domain: 'transfermarkt.de', feeds: [gnews('Werder site:transfermarkt.de when:30d')] },
       { key: 'bild', name: 'BILD', domain: 'bild.de', feeds: [gnews('Werder site:www.bild.de when:14d')] },
       { key: 'sportbild', name: 'SPORT BILD', domain: 'sportbild.bild.de', feeds: [gnews('Werder site:sportbild.bild.de when:30d')] },
       { key: 'youtube', name: 'YouTube', domain: 'youtube.com', feeds: [], youtubeHandle: 'werderbremen' },
+    ],
+  },
+  {
+    key: 'dubai', name: 'Dubai', emoji: '🏙️',
+    sources: [
+      { key: 'dubai-de', name: 'Deutsch', domain: 'news.google.com', perItemLogo: true, feeds: [gnews('Dubai OR VAE OR "Vereinigte Arabische Emirate" when:3d')] },
+      { key: 'gulfnews', name: 'Gulf News', domain: 'gulfnews.com', feeds: [gnews('Dubai site:gulfnews.com when:3d', 'en')] },
+      { key: 'khaleej', name: 'Khaleej Times', domain: 'khaleejtimes.com', feeds: [gnews('Dubai site:khaleejtimes.com when:3d', 'en')] },
+      { key: 'thenational', name: 'The National', domain: 'thenationalnews.com', feeds: [gnews('Dubai site:thenationalnews.com when:3d', 'en')] },
+    ],
+  },
+  {
+    key: 'immobilien', name: 'Dubai Islands & Immobilien', emoji: '🏝️',
+    sources: [
+      { key: 'dubai-islands', name: 'Dubai Islands', domain: 'news.google.com', perItemLogo: true, feeds: [gnews('"Dubai Islands" when:60d', 'en')] },
+      { key: 'imtiaz', name: 'Imtiaz', domain: 'news.google.com', perItemLogo: true, feeds: [gnews('"Imtiaz Developments" OR "Imtiaz" Beachwalk OR "Imtiaz" Dubai property when:90d', 'en')] },
+      { key: 'markt-en', name: 'Markt (EN)', domain: 'news.google.com', perItemLogo: true, feeds: [gnews('Dubai property market OR "Dubai real estate" when:7d', 'en')] },
+      { key: 'markt-de', name: 'Markt (DE)', domain: 'news.google.com', perItemLogo: true, feeds: [gnews('Dubai Immobilien OR Immobilienmarkt Dubai when:30d')] },
+    ],
+  },
+  {
+    key: 'bundesliga', name: 'Bundesliga', emoji: '⚽',
+    sources: [
+      { key: 'bl-kicker', name: 'kicker', domain: 'kicker.de', feeds: [gnews('Bundesliga site:kicker.de when:3d')] },
+      { key: 'sportschau', name: 'Sportschau', domain: 'sportschau.de', feeds: [gnews('Bundesliga site:sportschau.de when:7d')] },
+      { key: 'bl-transfermarkt', name: 'Transfermarkt', domain: 'transfermarkt.de', feeds: [gnews('Bundesliga site:transfermarkt.de when:7d')] },
+      { key: 'bl-youtube', name: 'YouTube', domain: 'youtube.com', feeds: [], youtubeHandle: 'bundesliga' },
     ],
   },
 ];
@@ -39,6 +69,7 @@ export interface NewsItem {
   sourceKey: string;
   publisher: string | null; // Name laut Feed
   thumb: string | null;     // nur YouTube (i.ytimg.com)
+  publisherDomain: string | null; // Verlag laut Feed (für Logo bei gemischten Quellen)
 }
 
 const parser = new XMLParser({ ignoreAttributes: false, attributeNamePrefix: '@', textNodeName: '#text', processEntities: true, htmlEntities: true });
@@ -54,13 +85,16 @@ export function parseFeed(xml: string, sourceKey: string): NewsItem[] {
   if (doc.rss) {
     return arr(doc.rss.channel?.item).map((it: Record<string, unknown>) => {
       const publisher = text(it.source) || null;
+      const srcUrl = it.source && typeof it.source === 'object' ? String((it.source as Record<string, unknown>)['@url'] ?? '') : '';
+      let publisherDomain: string | null = null;
+      try { publisherDomain = srcUrl ? new URL(srcUrl).hostname.replace(/^www\./, '') : null; } catch { /* ohne Logo */ }
       let title = strip(text(it.title));
       if (publisher && title.endsWith(` - ${publisher}`)) title = title.slice(0, -(publisher.length + 3));
       const desc = strip(text(it.description));
       const snippet = desc && !desc.startsWith(title.slice(0, 30)) ? desc.slice(0, 220) : null;
       const link = text(it.link);
       const d = text(it.pubDate);
-      return { id: text(it.guid) || link, title, link, date: d ? new Date(d) : null, snippet, sourceKey, publisher, thumb: null };
+      return { id: text(it.guid) || link, title, link, date: d ? new Date(d) : null, snippet, sourceKey, publisher, thumb: null, publisherDomain };
     });
   }
   if (doc.feed) {
@@ -72,6 +106,7 @@ export function parseFeed(xml: string, sourceKey: string): NewsItem[] {
         id: text(e.id) || link, title: strip(text(e.title)), link, date: e.published ? new Date(text(e.published)) : null,
         snippet: desc ? strip(desc).slice(0, 220) : null, sourceKey, publisher: text(e.author?.name) || null,
         thumb: vid && /^[\w-]{6,20}$/.test(vid) ? `https://i.ytimg.com/vi/${vid}/mqdefault.jpg` : null,
+        publisherDomain: 'youtube.com',
       };
     });
   }
@@ -99,3 +134,6 @@ export function timeAgo(d: Date | null, now = new Date()): string {
   const days = Math.round(h / 24);
   return days === 1 ? 'gestern' : `vor ${days} Tagen`;
 }
+
+/** Gültiger Hostname für das Logo eines Verlags (nur Buchstaben, Ziffern, Punkte, Bindestriche) */
+export const isDomain = (d: string) => /^(?=.{3,100}$)[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$/i.test(d);

@@ -37,3 +37,15 @@ test('Zusammenführen: unsichere Links raus, Dubletten raus, neueste zuerst', ()
   assert.equal(all[0].sourceKey, 'kicker'); // 08:00 > 07:00
   assert.equal(timeAgo(new Date('2026-10-25T08:00:00Z'), new Date('2026-10-25T10:10:00Z')), 'vor 2 Std.');
 });
+
+test('Themen: Werder zuerst, alle Quellen-Schlüssel eindeutig, Verlags-Domains streng geprüft', async () => {
+  const { TOPICS, isDomain } = await import('../../src/lib/news');
+  assert.equal(TOPICS[0].key, 'werder');
+  assert.deepEqual(TOPICS.map((t) => t.key), ['werder', 'dubai', 'immobilien', 'bundesliga']);
+  const keys = TOPICS.flatMap((t) => t.sources.map((s) => s.key));
+  assert.equal(new Set(keys).size, keys.length);
+  assert.ok(isDomain('gulfnews.com') && isDomain('sport.bild.de'));
+  for (const bad of ['localhost', '169.254.169.254/x', 'a b.com', '..', 'x.com/../y', 'evil.com?x=1']) assert.equal(isDomain(bad), false, bad);
+  const [a] = parseFeed(RSS, 'kicker');
+  assert.equal(a.publisherDomain, 'kicker.de');
+});
