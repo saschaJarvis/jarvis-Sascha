@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import { requireUser } from '@/server/auth';
 import { loadTopic } from '@/server/news';
-import { TOPICS, timeAgo } from '@/lib/news';
+import { mergeNews, TOPICS, timeAgo } from '@/lib/news';
 
 export const revalidate = 0;
 
@@ -10,7 +10,8 @@ export default async function NewsPage({ searchParams }: { searchParams: Promise
   const { thema, quelle } = await searchParams;
   const { topic, items, sources } = await loadTopic(thema ?? TOPICS[0].key);
   const active = sources.find((s) => s.source.key === quelle)?.source.key ?? null;
-  const shown = active ? items.filter((i) => i.sourceKey === active) : items;
+  // Mit Filter: alle Meldungen dieser Quelle (nicht nur die, die es in die gemeinsamen Top 120 geschafft haben)
+  const shown = active ? mergeNews([sources.find((x) => x.source.key === active)!.items]) : items;
   const byKey = Object.fromEntries(sources.map((s) => [s.source.key, s]));
   const now = new Date();
   const href = (q: string | null) => `/news?thema=${topic.key}${q ? `&quelle=${q}` : ''}`;
