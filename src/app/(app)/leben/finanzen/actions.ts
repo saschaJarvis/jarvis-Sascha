@@ -27,10 +27,12 @@ export async function addWalletAction(_: WalletState, fd: FormData): Promise<Wal
   }
   if (!label || label === 'Ledger') label = `Ledger ${chain.toUpperCase()}`;
   try {
-    await db(s).run((q) => q('insert into crypto_wallets (user_id, chain, address, label) values (auth.uid(), $1, $2, $3)', [chain, raw, label]));
+    await db(s).run((q) => chain === 'eth'
+      ? q('insert into eth_wallets (user_id, address, label) values (auth.uid(), $1, $2)', [raw, label])
+      : q('insert into crypto_wallets (user_id, chain, address, label) values (auth.uid(), $1, $2, $3)', [chain, raw, label]));
   } catch (e) {
     const m = e instanceof Error ? e.message : '';
-    if (/crypto_wallets_unique/.test(m)) return { error: 'Diese Adresse ist schon eingetragen.' };
+    if (/(crypto|eth)_wallets_unique/.test(m)) return { error: 'Diese Adresse ist schon eingetragen.' };
     if (/Höchstens 20/.test(m)) return { error: 'Höchstens 20 Wallets – bitte erst eines entfernen.' };
     return { error: friendlyDbError(e) };
   }
@@ -41,7 +43,10 @@ export async function addWalletAction(_: WalletState, fd: FormData): Promise<Wal
 export async function removeWalletAction(fd: FormData): Promise<void> {
   const s = await requireUser();
   const id = z.string().uuid().parse(fd.get('id'));
-  await db(s).run((q) => q('update crypto_wallets set deleted_at = now() where id = $1 and deleted_at is null', [id]));
+  await db(s).run(async (q) => {
+    await q('update crypto_wallets set deleted_at = now() where id = $1 and deleted_at is null', [id]);
+    await q('update eth_wallets set deleted_at = now() where id = $1 and deleted_at is null', [id]);
+  });
   revalidatePath('/', 'layout');
 }
 

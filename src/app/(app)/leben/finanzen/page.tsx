@@ -21,7 +21,7 @@ const short = (a: string) => `${a.slice(0, 6)}…${a.slice(-4)}`;
 export default async function FinancePage() {
   const s = await requireUser();
   const wallets = await db(s).run((q) => q<{ id: string; chain: Coin; address: string; label: string }>(
-    'select id, chain, address, label from crypto_wallets where deleted_at is null order by created_at'));
+    `select id, chain, address, label from (select id, 'xrp'::text as chain, address, label, created_at from crypto_wallets where deleted_at is null union all select id, 'eth'::text, address, label, created_at from eth_wallets where deleted_at is null) w order by created_at`));
   const [views, prices, nw] = await Promise.all([
     Promise.all(wallets.map((w): Promise<XrpAccount | EthAccount> => (w.chain === 'eth' ? loadEthAccount(w.address) : loadXrpAccount(w.address)))),
     coinPrices([...new Set(wallets.map((w) => w.chain))]),
