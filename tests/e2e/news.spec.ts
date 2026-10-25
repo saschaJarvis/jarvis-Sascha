@@ -30,6 +30,11 @@ test('News: Werder Bremen mit allen Quellen, Filter je Quelle, Links öffnen ext
   await themen.getByRole('link', { name: /Bundesliga/ }).click();
   await expect(page.getByRole('heading', { name: 'Bundesliga' })).toBeVisible();
   await expect(page.getByText('Test-Schlagzeile Sportschau: Werder gewinnt')).toBeVisible();
+  // Englische Quellen erscheinen übersetzt (Claude-Testmodus: „[DE] …“)
+  await themen.getByRole('link', { name: /^🏙️ Dubai$/ }).click();
+  await expect(page.getByText('[DE] Test-Schlagzeile Gulf News: Werder gewinnt')).toBeVisible();
+  await expect(page.getByText('🌐 übersetzt aus dem Englischen').first()).toBeVisible();
+  await expect(page.getByText('Test-Schlagzeile Deutsch: Werder gewinnt', { exact: true })).toBeVisible(); // deutsche Quelle bleibt
   await page.goto('/news');
   await page.screenshot({ path: 'docs/screens/6-news.png', fullPage: false });
 });

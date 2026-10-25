@@ -13,6 +13,7 @@ export interface NewsSource {
   youtubeHandle?: string;   // YouTube: Kanal über @Handle auflösen
   match?: RegExp;           // optional: nur Beiträge, die passen
   perItemLogo?: boolean;    // gemischte Quelle (Google News): Logo je Artikel vom jeweiligen Verlag
+  lang?: 'de' | 'en';       // Sprache der Quelle; „en“ wird ins Deutsche übersetzt
 }
 export interface NewsTopic { key: string; name: string; emoji: string; logo?: string; sources: NewsSource[] }
 
@@ -35,17 +36,17 @@ export const TOPICS: NewsTopic[] = [
     key: 'dubai', name: 'Dubai', emoji: '🏙️',
     sources: [
       { key: 'dubai-de', name: 'Deutsch', domain: 'news.google.com', perItemLogo: true, feeds: [gnews('Dubai OR VAE OR "Vereinigte Arabische Emirate" when:3d')] },
-      { key: 'gulfnews', name: 'Gulf News', domain: 'gulfnews.com', feeds: [gnews('Dubai site:gulfnews.com when:3d', 'en')] },
-      { key: 'khaleej', name: 'Khaleej Times', domain: 'khaleejtimes.com', feeds: [gnews('Dubai site:khaleejtimes.com when:3d', 'en')] },
-      { key: 'thenational', name: 'The National', domain: 'thenationalnews.com', feeds: [gnews('Dubai site:thenationalnews.com when:3d', 'en')] },
+      { key: 'gulfnews', name: 'Gulf News', domain: 'gulfnews.com', lang: 'en', feeds: [gnews('Dubai site:gulfnews.com when:3d', 'en')] },
+      { key: 'khaleej', name: 'Khaleej Times', domain: 'khaleejtimes.com', lang: 'en', feeds: [gnews('Dubai site:khaleejtimes.com when:3d', 'en')] },
+      { key: 'thenational', name: 'The National', domain: 'thenationalnews.com', lang: 'en', feeds: [gnews('Dubai site:thenationalnews.com when:3d', 'en')] },
     ],
   },
   {
     key: 'immobilien', name: 'Dubai Islands & Immobilien', emoji: '🏝️',
     sources: [
-      { key: 'dubai-islands', name: 'Dubai Islands', domain: 'news.google.com', perItemLogo: true, feeds: [gnews('"Dubai Islands" when:60d', 'en')] },
-      { key: 'imtiaz', name: 'Imtiaz', domain: 'news.google.com', perItemLogo: true, feeds: [gnews('"Imtiaz Developments" OR "Imtiaz" Beachwalk OR "Imtiaz" Dubai property when:90d', 'en')] },
-      { key: 'markt-en', name: 'Markt (EN)', domain: 'news.google.com', perItemLogo: true, feeds: [gnews('Dubai property market OR "Dubai real estate" when:7d', 'en')] },
+      { key: 'dubai-islands', name: 'Dubai Islands', domain: 'news.google.com', perItemLogo: true, lang: 'en', feeds: [gnews('"Dubai Islands" when:60d', 'en')] },
+      { key: 'imtiaz', name: 'Imtiaz', domain: 'news.google.com', perItemLogo: true, lang: 'en', feeds: [gnews('"Imtiaz Developments" OR "Imtiaz" Beachwalk OR "Imtiaz" Dubai property when:90d', 'en')] },
+      { key: 'markt-en', name: 'Markt international', domain: 'news.google.com', perItemLogo: true, lang: 'en', feeds: [gnews('Dubai property market OR "Dubai real estate" when:7d', 'en')] },
       { key: 'markt-de', name: 'Markt (DE)', domain: 'news.google.com', perItemLogo: true, feeds: [gnews('Dubai Immobilien OR Immobilienmarkt Dubai when:30d')] },
     ],
   },
@@ -55,7 +56,7 @@ export const TOPICS: NewsTopic[] = [
       { key: 'bl-kicker', name: 'kicker', domain: 'kicker.de', feeds: [gnews('Bundesliga site:kicker.de when:3d')] },
       { key: 'sportschau', name: 'Sportschau', domain: 'sportschau.de', feeds: [gnews('Bundesliga site:sportschau.de when:7d')] },
       { key: 'bl-transfermarkt', name: 'Transfermarkt', domain: 'transfermarkt.de', feeds: [gnews('Bundesliga site:transfermarkt.de when:7d')] },
-      { key: 'bl-youtube', name: 'YouTube', domain: 'youtube.com', feeds: [], youtubeHandle: 'bundesliga' },
+      { key: 'bl-youtube', name: 'YouTube', domain: 'youtube.com', lang: 'en', feeds: [], youtubeHandle: 'bundesliga' },
     ],
   },
 ];
@@ -70,6 +71,7 @@ export interface NewsItem {
   publisher: string | null; // Name laut Feed
   thumb: string | null;     // nur YouTube (i.ytimg.com)
   publisherDomain: string | null; // Verlag laut Feed (für Logo bei gemischten Quellen)
+  originalTitle?: string;   // gesetzt, wenn übersetzt
 }
 
 const parser = new XMLParser({ ignoreAttributes: false, attributeNamePrefix: '@', textNodeName: '#text', processEntities: true, htmlEntities: true });

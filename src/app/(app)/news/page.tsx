@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { requireUser } from '@/server/auth';
 import { loadTopic } from '@/server/news';
+import { translatorAvailable } from '@/server/translate';
 import { mergeNews, TOPICS, timeAgo } from '@/lib/news';
 
 export const revalidate = 0;
@@ -53,6 +54,10 @@ export default async function NewsPage({ searchParams }: { searchParams: Promise
         <p className="notice notice-warn text-sm">Gerade nicht erreichbar: {sources.filter((s) => s.error).map((s) => s.source.name).join(', ')}. Jarvis versucht es in ein paar Minuten erneut.</p>
       )}
 
+      {sources.some((x) => x.source.lang === 'en') && !translatorAvailable() && (
+        <p className="notice notice-info text-sm">Englische Meldungen werden automatisch übersetzt, sobald Claude (oder DeepL) verbunden ist – bis dahin im Original.</p>
+      )}
+
       {shown.length === 0 ? (
         <p className="card text-center text-muted">Keine aktuellen Meldungen.</p>
       ) : (
@@ -70,6 +75,7 @@ export default async function NewsPage({ searchParams }: { searchParams: Promise
                       {n.date && <span suppressHydrationWarning>· {timeAgo(n.date, now)}</span>}
                     </span>
                     <span className="block font-semibold leading-snug">{n.title}</span>
+                    {n.originalTitle && <span className="mono mt-0.5 block text-[.58rem] uppercase tracking-widest text-muted" title={n.originalTitle}>🌐 übersetzt aus dem Englischen</span>}
                     {n.snippet && <span className="mt-1 line-clamp-2 block text-sm text-muted">{n.snippet}</span>}
                   </span>
                 </a>

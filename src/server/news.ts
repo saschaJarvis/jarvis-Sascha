@@ -1,4 +1,6 @@
 import 'server-only';
+import { after } from 'next/server';
+import { toGerman, translatorAvailable } from './translate';
 import { mergeNews, parseFeed, TOPICS, type NewsItem, type NewsSource, type NewsTopic } from '@/lib/news';
 
 /**
@@ -48,6 +50,7 @@ async function loadSource(src: NewsSource): Promise<SourceResult> {
 export async function loadTopic(topicKey: string): Promise<{ topic: NewsTopic; items: NewsItem[]; sources: SourceResult[] }> {
   const topic = TOPICS.find((t) => t.key === topicKey) ?? TOPICS[0];
   const sources = await Promise.all(topic.sources.map(loadSource));
+  await translateEnglish(topic, sources);
   return { topic, items: mergeNews(sources.map((s) => s.items)), sources };
 }
 
@@ -60,4 +63,28 @@ function fakeFeed(src: NewsSource): string {
   return `<?xml version="1.0"?><rss version="2.0"><channel><title>Test</title>
 <item><title>Test-Schlagzeile ${src.name}: Werder gewinnt - ${src.name}</title><link>https://news.google.com/rss/articles/test-${src.key}</link><guid>${src.key}-1</guid><pubDate>${new Date(now - 2 * 3600e3).toUTCString()}</pubDate><description>&lt;a href="x"&gt;Test-Schlagzeile ${src.name}: Werder gewinnt&lt;/a&gt;</description><source url="https://${src.domain}">${src.name}</source></item>
 </channel></rss>`;
+}
+
+/**
+ * Englische Quellen ins Deutsche übersetzen. Gespeicherte Übersetzungen sofort; fehlende höchstens ~4,5 s abwarten,
+ * danach im Hintergrund fertig übersetzen (beim nächsten Öffnen deutsch).
+ */
+async function translateEnglish(topic: NewsTopic, sources: SourceResult[]): Promise<void> {
+  const en = sources.filter((s) => s.source.lang === 'en').flatMap((s) => s.items.slice(0, 60));
+  if (en.length === 0) return;
+  const texts = en.flatMap((i) => [i.title, ...(i.snippet ? [i.snippet] : [])]);
+  let map = await toGerman(texts, { translateMissing: false }).catch(() => new Map<string, string>());
+  const missing = texts.filter((t) => !map.has(t.trim()));
+  if (missing.length && translatorAvailable()) {
+    const job = toGerman(missing).catch(() => new Map<string, string>());
+    const done = await Promise.race([job, new Promise<null>((r) => setTimeout(() => r(null), 4500))]);
+    if (done) map = new Map([...map, ...done]);
+    else { try { after(() => job.then(() => undefined)); } catch { /* außerhalb einer Anfrage */ } }
+  }
+  for (const i of en) {
+    const de = map.get(i.title.trim());
+    if (de && de !== i.title) { i.originalTitle = i.title; i.title = de; }
+    if (i.snippet) i.snippet = map.get(i.snippet.trim()) ?? i.snippet;
+  }
+  void topic;
 }
