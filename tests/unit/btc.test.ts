@@ -20,5 +20,5 @@ test('BTC-Adressen: Legacy, P2SH, SegWit (BIP-173), Taproot (BIP-350) inkl. Prü
     'bc1p0xlxvlhemja6c4dqv22uapctqupfhlxm9h8z3k2e72q4k9hcz7vqzk5jj1',
     'tb1qw508d6qejxtdg4y5r3zarvary0c5xw7kxpjzsx',
   ]) assert.equal(isBtcAddress(a), false, a);
-  assert.match(btcAddressHint('xpub6CUGRUonZSQ4TWtTMmzXdrXDtypWKiKrhko4egpiMZbpiaQL2jkwSB1icqYh2cfDfVxdx4df189oLKnC5fSwqPfgyP3hooxujYzAu3fDVmz') ?? '', /erweiterter/);
+  assert.match(btcAddressHint('xpub6CUGRUonZSQ4TWtTMmzXdrXDtypWKiKrhko4egpiMZbpiaQL2jkwSB1icqYh2cfDfVxdx4df189oLKnC5fSwqPfgyP3hooxujYzAu3fDVmz') ?? '', /Kontoschlüssel/);
 });
