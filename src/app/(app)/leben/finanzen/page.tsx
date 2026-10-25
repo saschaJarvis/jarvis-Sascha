@@ -1,6 +1,7 @@
 import { requireUser } from '@/server/auth';
 import { db } from '@/server/repo';
-import { loadXrpAccount, xrpPrice } from '@/server/wallets';
+import { coinPrices, loadEthAccount, loadXrpAccount, type Coin, type EthAccount, type XrpAccount } from '@/server/wallets';
+import { AED_PER_USD } from '@/lib/domain/networth';
 import { PageTitle, Section } from '@/components/ui';
 import { timeAgo } from '@/lib/news';
 import { AddAccountForm, AddGoldForm, AddWalletForm, BalanceForm } from './wallet-form';
@@ -19,10 +20,14 @@ const short = (a: string) => `${a.slice(0, 6)}…${a.slice(-4)}`;
 
 export default async function FinancePage() {
   const s = await requireUser();
-  const wallets = await db(s).run((q) => q<{ id: string; chain: string; address: string; label: string }>(
+  const wallets = await db(s).run((q) => q<{ id: string; chain: Coin; address: string; label: string }>(
     'select id, chain, address, label from crypto_wallets where deleted_at is null order by created_at'));
-  const [accounts, price, nw] = await Promise.all([Promise.all(wallets.map((w) => loadXrpAccount(w.address))), wallets.length ? xrpPrice() : null, loadNetWorth(s)]);
-  const total = accounts.reduce((n, a) => n + (Number.isFinite(a.xrp) ? a.xrp : 0), 0);
+  const [views, prices, nw] = await Promise.all([
+    Promise.all(wallets.map((w): Promise<XrpAccount | EthAccount> => (w.chain === 'eth' ? loadEthAccount(w.address) : loadXrpAccount(w.address)))),
+    coinPrices([...new Set(wallets.map((w) => w.chain))]),
+    loadNetWorth(s),
+  ]);
+  const EXPLORER: Record<Coin, (a: string) => string> = { xrp: (a) => `https://livenet.xrpl.org/accounts/${a}`, eth: (a) => `https://etherscan.io/address/${a}` };
   const now = new Date();
 
   return (
@@ -86,48 +91,57 @@ export default async function FinancePage() {
         </div>
       </Section>
 
-      <Section title="Krypto · nur ansehen" aside={price ? <span className="mono text-xs text-muted">1 XRP = {nf(price.eur, 4)} € · {nf(price.aed, 3)} AED</span> : null}>
+      <Section title="Krypto · nur ansehen" aside={<span className="mono text-xs text-muted">{(Object.entries(prices) as Array<[Coin, { eur: number }]>).map(([c, p]) => `1 ${c.toUpperCase()} = ${nf(p.eur, c === 'xrp' ? 4 : 0)} €`).join(' · ')}</span>}>
         <p className="notice notice-info mb-3 text-sm">
           🔒 Jarvis kennt nur deine <strong>öffentliche Adresse</strong> und kann damit nichts versenden. Deine 24 Wörter, PIN oder dein Ledger werden nie gebraucht – wer danach fragt, will dich betrügen.
         </p>
 
         {wallets.length > 0 && (
           <div className="card mb-3 grid gap-1">
-            <p className="eyebrow">Gesamt</p>
-            <p className="text-2xl font-bold">{nf(total, 2)} XRP</p>
-            {price
-              ? <p className="text-muted">≈ {nf(total * price.eur)} € · {nf(total * price.aed)} AED <span className="text-xs">({price.source})</span></p>
-              : <p className="text-sm text-muted">Kurs gerade nicht abrufbar.</p>}
+            <p className="eyebrow">Krypto gesamt</p>
+            <p className="text-2xl font-bold">{nf(nw.crypto.aed, 0)} AED</p>
+            <p className="text-muted">{nw.eurAed ? `≈ ${nf(nw.crypto.aed / nw.eurAed, 0)} € · ` : ''}{Object.entries(nw.crypto.holdings).filter(([, v]) => v).map(([k, v]) => `${nf(v ?? 0, k === 'ETH' ? 4 : 2)} ${k}`).join(' · ')}</p>
+            {nw.crypto.error && <p className="text-sm text-warn">Ein Teil ist gerade ohne Kurs oder Netz – nicht mitgezählt.</p>}
           </div>
         )}
 
         <ul className="grid gap-3">
           {wallets.map((w, i) => {
-            const a = accounts[i];
+            const v = views[i];
+            const p = prices[w.chain];
+            const sym = w.chain.toUpperCase();
+            const x = w.chain === 'xrp' ? (v as XrpAccount) : null;
+            const e = w.chain === 'eth' ? (v as EthAccount) : null;
+            const amount = x ? x.xrp : e!.eth;
+            const stableUsd = e ? e.tokens.reduce((n, t) => n + (Number.isFinite(t.amount) ? t.amount : 0), 0) : 0;
             return (
               <li key={w.id} className="card grid gap-2">
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
-                    <p className="font-semibold">{w.label} <span className="mono text-xs text-muted">XRP</span></p>
-                    <a className="mono break-all text-xs text-sea underline" href={`https://livenet.xrpl.org/accounts/${w.address}`} target="_blank" rel="noopener noreferrer">{short(w.address)} ↗</a>
+                    <p className="font-semibold">{w.label} <span className="mono text-xs text-muted">{sym}</span></p>
+                    <a className="mono break-all text-xs text-sea underline" href={EXPLORER[w.chain](w.address)} target="_blank" rel="noopener noreferrer">{short(w.address)} ↗</a>
                   </div>
                   <div className="text-right">
-                    {a.error ? <p className="text-sm text-warn">{a.error}</p>
-                      : !a.activated ? <p className="text-sm text-muted">Noch nicht aktiviert (0 XRP)</p>
+                    {v.error ? <p className="text-sm text-warn">{v.error}</p>
+                      : x && !x.activated ? <p className="text-sm text-muted">Noch nicht aktiviert (0 XRP)</p>
                       : <>
-                        <p className="text-lg font-bold">{nf(a.xrp, 2)} XRP</p>
-                        {price && <p className="text-sm text-muted">≈ {nf(a.xrp * price.eur)} €</p>}
+                        <p className="text-lg font-bold">{nf(amount, w.chain === 'eth' ? 4 : 2)} {sym}</p>
+                        {p && <p className="text-sm text-muted">≈ {nf(amount * p.eur + (nw.eurAed ? (stableUsd * AED_PER_USD) / nw.eurAed : 0))} €</p>}
                       </>}
                   </div>
                 </div>
-                {a.reserveXrp != null && a.activated && !a.error && (
-                  <p className="text-xs text-muted">Davon {nf(a.reserveXrp, 1)} XRP als Mindestreserve des XRP Ledgers gebunden.</p>
+                {e && e.tokens.length > 0 && !e.error && (
+                  <p className="text-sm">{e.tokens.map((t) => Number.isFinite(t.amount) ? `+ ${nf(t.amount, 2)} ${t.symbol}` : `${t.symbol}: nicht abrufbar`).join(' · ')}</p>
                 )}
-                {a.moves.length > 0 && (
+                {e && !e.error && <p className="text-xs text-muted">Gezählt: ETH, USDT und USDC. Andere Tokens/NFTs siehst du über den Etherscan-Link.</p>}
+                {x && x.reserveXrp != null && x.activated && !x.error && (
+                  <p className="text-xs text-muted">Davon {nf(x.reserveXrp, 1)} XRP als Mindestreserve des XRP Ledgers gebunden.</p>
+                )}
+                {x && x.moves.length > 0 && (
                   <details>
-                    <summary className="cursor-pointer text-sm text-sea">Letzte Bewegungen ({a.moves.length})</summary>
+                    <summary className="cursor-pointer text-sm text-sea">Letzte Bewegungen ({x.moves.length})</summary>
                     <ul className="mt-2 grid gap-1 text-sm">
-                      {a.moves.map((m) => (
+                      {x.moves.map((m) => (
                         <li key={m.hash} className="flex items-baseline justify-between gap-2 border-b border-line pb-1 last:border-0">
                           <span className="min-w-0">
                             <span className={m.direction === 'in' ? 'text-good' : m.direction === 'out' ? 'text-bad' : 'text-muted'}>
@@ -154,7 +168,7 @@ export default async function FinancePage() {
         </ul>
 
         <div className="mt-3">
-          <ConnectSection initialOpen={wallets.length === 0} title="+ XRP-Adresse hinzufügen">
+          <ConnectSection initialOpen={wallets.length === 0} title="+ Wallet-Adresse hinzufügen (XRP / ETH)">
             <div className="mt-3"><AddWalletForm /></div>
           </ConnectSection>
         </div>

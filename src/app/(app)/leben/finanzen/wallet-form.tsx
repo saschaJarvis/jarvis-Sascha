@@ -10,14 +10,14 @@ export function AddWalletForm() {
   return (
     <form ref={ref} action={action} className="grid gap-3">
       <div>
-        <label className="label" htmlFor="w-addr">Öffentliche XRP-Adresse</label>
+        <label className="label" htmlFor="w-addr">Öffentliche Adresse (XRP oder Ethereum)</label>
         <input id="w-addr" name="address" required autoComplete="off" autoCapitalize="off" spellCheck={false} maxLength={120}
-          className="field mono text-sm" placeholder="r…" />
-        <p className="mt-1 text-xs text-muted">In Ledger Live: XRP-Konto → „Empfangen“ → Adresse kopieren.</p>
+          className="field mono text-sm" placeholder="r… oder 0x…" />
+        <p className="mt-1 text-xs text-muted">In Ledger Live: Konto → „Empfangen“ → Adresse kopieren. Die Art (XRP/ETH) erkennt Jarvis selbst.</p>
       </div>
       <div>
         <label className="label" htmlFor="w-label">Bezeichnung</label>
-        <input id="w-label" name="label" maxLength={40} defaultValue="Ledger" className="field" />
+        <input id="w-label" name="label" maxLength={40} placeholder="z. B. Ledger ETH" className="field" />
       </div>
       <Submit>Adresse hinzufügen</Submit>
       <ErrorNote error={state?.error} /><OkNote message={state?.ok} />

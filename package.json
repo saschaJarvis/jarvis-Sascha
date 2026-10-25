@@ -21,6 +21,7 @@
     "screens": "SCREENS=1 playwright test screens"
   },
   "dependencies": {
+    "@noble/hashes": "1.8.0",
     "@supabase/ssr": "0.12.7",
     "@supabase/supabase-js": "2.118.0",
     "fast-xml-parser": "5.11.2",

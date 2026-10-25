@@ -5,21 +5,29 @@ import { requireUser } from '@/server/auth';
 import { db } from '@/server/repo';
 import { friendlyDbError } from '@/server/db';
 import { addressHint, isXrpAddress } from '@/lib/crypto/xrp';
+import { ethAddressHint, isEthAddress } from '@/lib/crypto/eth';
 import { CURRENCIES, parseAmount } from '@/lib/domain/networth';
 
 export type WalletState = { error?: string; ok?: string } | undefined;
 
-/** Nimmt NUR öffentliche Adressen an. Alles, was nach Seed/Schlüssel aussieht, wird abgelehnt und nicht gespeichert. */
+/** Nimmt NUR öffentliche Adressen an (XRP r…, Ethereum 0x…). Alles, was nach Seed/Schlüssel aussieht, wird abgewiesen und nicht gespeichert. */
 export async function addWalletAction(_: WalletState, fd: FormData): Promise<WalletState> {
   const s = await requireUser();
   const raw = String(fd.get('address') ?? '').trim();
-  const label = String(fd.get('label') ?? '').trim().slice(0, 40) || 'Ledger';
-  if (raw.split(/\s+/).length >= 12 || /^s[1-9A-HJ-NP-Za-km-z]{25,}$/.test(raw)) {
-    return { error: '⚠️ Das sieht nach einer geheimen Wiederherstellungsphrase oder einem privaten Schlüssel aus. Es wurde NICHT gespeichert. Jarvis braucht nur die öffentliche Adresse (beginnt mit „r“). Gib deine 24 Wörter niemals irgendwo ein.' };
+  let label = String(fd.get('label') ?? '').trim().slice(0, 40);
+  const SECRET = '⚠️ Das sieht nach einer geheimen Wiederherstellungsphrase oder einem privaten Schlüssel aus. Es wurde NICHT gespeichert. Jarvis braucht nur die öffentliche Adresse. Gib deine 24 Wörter oder Schlüssel niemals irgendwo ein.';
+  if (raw.split(/\s+/).length >= 12 || /^s[1-9A-HJ-NP-Za-km-z]{25,}$/.test(raw) || /^(0x)?[0-9a-fA-F]{64}$/.test(raw) || /^[xyzt]prv/i.test(raw)) return { error: SECRET };
+  let chain: 'xrp' | 'eth';
+  if (raw.startsWith('0x') || /\.eth$/i.test(raw)) {
+    if (!isEthAddress(raw)) return { error: ethAddressHint(raw) ?? 'Keine gültige Ethereum-Adresse (0x + 40 Zeichen).' };
+    chain = 'eth';
+  } else {
+    if (!isXrpAddress(raw)) return { error: addressHint(raw) ?? 'Keine gültige Adresse. XRP beginnt mit „r“, Ethereum mit „0x“.' };
+    chain = 'xrp';
   }
-  if (!isXrpAddress(raw)) return { error: addressHint(raw) ?? 'Keine gültige XRP-Adresse. Sie beginnt mit „r“ und ist 25–35 Zeichen lang.' };
+  if (!label || label === 'Ledger') label = `Ledger ${chain.toUpperCase()}`;
   try {
-    await db(s).run((q) => q('insert into crypto_wallets (user_id, chain, address, label) values (auth.uid(), $1, $2, $3)', ['xrp', raw, label]));
+    await db(s).run((q) => q('insert into crypto_wallets (user_id, chain, address, label) values (auth.uid(), $1, $2, $3)', [chain, raw, label]));
   } catch (e) {
     const m = e instanceof Error ? e.message : '';
     if (/crypto_wallets_unique/.test(m)) return { error: 'Diese Adresse ist schon eingetragen.' };

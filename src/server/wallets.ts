@@ -1,5 +1,6 @@
 import 'server-only';
 import { DROPS_PER_XRP, toMove, type XrpMove } from '@/lib/crypto/xrp';
+import { balanceOfData, ETH_TOKENS, fromUnits } from '@/lib/crypto/eth';
 import { AED_PER_USD } from './ext';
 
 /**
@@ -88,22 +89,76 @@ export async function loadXrpAccount(address: string): Promise<XrpAccount> {
   });
 }
 
-/** Kurs XRP: CoinGecko, Ausweich Kraken. AED über die feste USD-Bindung. */
-export async function xrpPrice(): Promise<Price | null> {
-  if (fake()) return { eur: 2, usd: 2.2, aed: 2.2 * AED_PER_USD, source: 'Test', at: new Date() };
+export type Coin = 'xrp' | 'eth';
+const GECKO: Record<Coin, string> = { xrp: 'ripple', eth: 'ethereum' };
+const KRAKEN: Record<Coin, string> = { xrp: 'XRP', eth: 'ETH' };
+
+/** Kurse: CoinGecko (eine Abfrage für alle), Ausweich Kraken. AED über die feste USD-Bindung. */
+export async function coinPrices(coins: readonly Coin[] = ['xrp', 'eth']): Promise<Partial<Record<Coin, Price>>> {
+  if (fake()) return { xrp: { eur: 2, usd: 2.2, aed: 2.2 * AED_PER_USD, source: 'Test', at: new Date() }, eth: { eur: 3000, usd: 3300, aed: 3300 * AED_PER_USD, source: 'Test', at: new Date() } };
+  const out: Partial<Record<Coin, Price>> = {};
+  if (!coins.length) return out;
   try {
-    const r = await fetch('https://api.coingecko.com/api/v3/simple/price?ids=ripple&vs_currencies=eur,usd', { next: { revalidate: 300 }, signal: AbortSignal.timeout(4000) });
+    const r = await fetch(`https://api.coingecko.com/api/v3/simple/price?ids=${coins.map((c) => GECKO[c]).join(',')}&vs_currencies=eur,usd`, { next: { revalidate: 300 }, signal: AbortSignal.timeout(4000) });
     if (r.ok) {
-      const j = (await r.json()) as { ripple?: { eur?: number; usd?: number } };
-      if (j.ripple?.eur && j.ripple.usd) return { eur: j.ripple.eur, usd: j.ripple.usd, aed: j.ripple.usd * AED_PER_USD, source: 'CoinGecko', at: new Date() };
+      const j = (await r.json()) as Record<string, { eur?: number; usd?: number }>;
+      for (const c of coins) { const v = j[GECKO[c]]; if (v?.eur && v.usd) out[c] = { eur: v.eur, usd: v.usd, aed: v.usd * AED_PER_USD, source: 'CoinGecko', at: new Date() }; }
     }
   } catch { /* Ausweich */ }
-  try {
-    const r = await fetch('https://api.kraken.com/0/public/Ticker?pair=XRPEUR,XRPUSD', { next: { revalidate: 300 }, signal: AbortSignal.timeout(4000) });
-    const j = (await r.json()) as { result?: Record<string, { c?: [string] }> };
-    const pick = (re: RegExp) => Number(Object.entries(j.result ?? {}).find(([k]) => re.test(k))?.[1].c?.[0]);
-    const eur = pick(/EUR$/), usd = pick(/USD$/);
-    if (eur > 0 && usd > 0) return { eur, usd, aed: usd * AED_PER_USD, source: 'Kraken', at: new Date() };
-  } catch { /* kein Kurs */ }
-  return null;
+  for (const c of coins.filter((x) => !out[x])) {
+    try {
+      const k = KRAKEN[c];
+      const r = await fetch(`https://api.kraken.com/0/public/Ticker?pair=${k}EUR,${k}USD`, { next: { revalidate: 300 }, signal: AbortSignal.timeout(4000) });
+      const j = (await r.json()) as { result?: Record<string, { c?: [string] }> };
+      const pick = (re: RegExp) => Number(Object.entries(j.result ?? {}).find(([key]) => re.test(key))?.[1].c?.[0]);
+      const eur = pick(/EUR$/), usd = pick(/USD$/);
+      if (eur > 0 && usd > 0) out[c] = { eur, usd, aed: usd * AED_PER_USD, source: 'Kraken', at: new Date() };
+    } catch { /* kein Kurs */ }
+  }
+  return out;
+}
+
+export async function xrpPrice(): Promise<Price | null> {
+  return (await coinPrices(['xrp'])).xrp ?? null;
+}
+
+// ---------- Ethereum ----------
+const ETH_NODES = ['https://ethereum-rpc.publicnode.com', 'https://eth.llamarpc.com', 'https://rpc.ankr.com/eth'];
+
+async function ethRpc(method: string, params: unknown[]): Promise<string> {
+  let last = 'nicht erreichbar';
+  for (const url of ETH_NODES) {
+    try {
+      const r = await fetch(url, {
+        method: 'POST', headers: { 'content-type': 'application/json' }, cache: 'no-store',
+        body: JSON.stringify({ jsonrpc: '2.0', id: 1, method, params }), signal: AbortSignal.timeout(6000),
+      });
+      if (!r.ok) { last = `HTTP ${r.status}`; continue; }
+      const j = (await r.json()) as { result?: string; error?: { message?: string } };
+      if (typeof j.result === 'string') return j.result;
+      last = j.error?.message ?? 'leere Antwort';
+    } catch (e) { last = (e as Error).message; }
+  }
+  throw new Error(last);
+}
+
+export interface EthAccount { address: string; eth: number; tokens: Array<{ symbol: string; amount: number }>; error?: string }
+
+export async function loadEthAccount(address: string): Promise<EthAccount> {
+  if (fake()) return { address, eth: 1.5, tokens: [{ symbol: 'USDC', amount: 500 }] };
+  return cached(`eth:${address.toLowerCase()}`, 120_000, async () => {
+    try {
+      const [wei, ...tok] = await Promise.all([
+        ethRpc('eth_getBalance', [address, 'latest']),
+        ...ETH_TOKENS.map((t) => ethRpc('eth_call', [{ to: t.contract, data: balanceOfData(address) }, 'latest']).catch(() => null)),
+      ]);
+      return {
+        address, eth: fromUnits(wei, 18),
+        tokens: ETH_TOKENS.map((t, i) => ({ symbol: t.symbol, amount: tok[i] ? fromUnits(tok[i]!, t.decimals) : NaN })).filter((t) => t.amount !== 0),
+      };
+    } catch (e) {
+      console.error('[eth]', (e as Error).message);
+      return { address, eth: NaN, tokens: [], error: 'Ethereum-Netz gerade nicht erreichbar.' };
+    }
+  });
 }
