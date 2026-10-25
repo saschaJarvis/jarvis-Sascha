@@ -10,6 +10,7 @@ import { removeAccountAction, removeGoldAction, removeWalletAction } from './act
 import { loadNetWorth } from '@/server/networth';
 import { CryptoChange, NetWorthCard } from '@/components/net-worth';
 import { AutoRefresh } from '@/components/auto-refresh';
+import { isLtcDescriptor } from '@/lib/crypto/ltc';
 import { StatementsSection } from '@/components/statements';
 import { kickStatements, loadStatements } from '@/server/statements';
 import { claudeAvailable } from '@/server/claude';
@@ -35,7 +36,7 @@ export default async function FinancePage() {
     loadNetWorth(s),
   ]);
   const statements = await loadStatements(s);
-  const EXPLORER: Record<Coin, (a: string) => string> = { xrp: (a) => `https://livenet.xrpl.org/accounts/${a}`, eth: (a) => `https://etherscan.io/address/${a}`, btc: (a) => `https://mempool.space/address/${a}`, ada: (a) => `https://cardanoscan.io/address/${a}`, algo: (a) => `https://allo.info/account/${a}`, zec: (a) => `https://blockchair.com/zcash/address/${a}`, atom: (a) => `https://www.mintscan.io/cosmos/address/${a}`, xlm: (a) => `https://stellar.expert/explorer/public/account/${a}`, ltc: (a) => `https://litecoinspace.org/address/${a}` };
+  const EXPLORER: Record<Coin, (a: string) => string> = { xrp: (a) => `https://livenet.xrpl.org/accounts/${a}`, eth: (a) => `https://etherscan.io/address/${a}`, btc: (a) => `https://mempool.space/address/${a}`, ada: (a) => `https://cardanoscan.io/address/${a}`, algo: (a) => `https://allo.info/account/${a}`, zec: (a) => `https://blockchair.com/zcash/address/${a}`, atom: (a) => `https://www.mintscan.io/cosmos/address/${a}`, xlm: (a) => `https://stellar.expert/explorer/public/account/${a}`, ltc: (a) => (isLtcDescriptor(a) ? `https://litecoinblockexplorer.net/xpub/${encodeURIComponent(a)}` : `https://litecoinspace.org/address/${a}`) };
   const now = new Date();
 
   return (
@@ -163,7 +164,7 @@ export default async function FinancePage() {
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
                     <p className="font-semibold">{w.label} <span className="mono text-xs text-muted">{sym}</span></p>
-                    <a className="mono break-all text-xs text-sea underline" href={EXPLORER[w.chain](w.address)} target="_blank" rel="noopener noreferrer">{short(w.address)} ↗</a>
+                    <a className="mono break-all text-xs text-sea underline" href={EXPLORER[w.chain](w.address)} target="_blank" rel="noopener noreferrer">{isLtcDescriptor(w.address) ? `Kontoschlüssel ${short(w.address.replace(/^(sh\(wpkh|wpkh|pkh)\(|\)+$/g, ''))}` : short(w.address)} ↗</a>
                   </div>
                   <div className="text-right">
                     {v.error ? <p className="text-sm text-warn">{v.error}</p>
@@ -219,7 +220,7 @@ export default async function FinancePage() {
                 {lt && !lt.error && (
                   <>
                     {lt.pendingLtc !== 0 && <p className="text-xs text-warn">Unbestätigt: {lt.pendingLtc > 0 ? '+' : ''}{nf(lt.pendingLtc, 8)} LTC</p>}
-                    <p className="text-xs text-muted">Zeigt nur diese eine Adresse.{lt.ltc === 0 && lt.txCount > 0 ? ` Sie wurde ${lt.txCount}× benutzt und ist gerade leer – Ledger Live nimmt für jeden Empfang eine neue Adresse.` : ' Weicht der Betrag von Ledger Live ab, füge die weiteren Adressen hinzu.'}</p>
+                    <p className="text-xs text-muted">{lt.whole ? `Ganzes Litecoin-Konto: alle Empfangs- und Wechselgeld-Adressen (${lt.usedAddresses ?? 0} benutzt, ${lt.withBalance ?? 0} mit Guthaben) – sollte genau mit Ledger Live übereinstimmen.` : <>Zeigt nur diese eine Adresse.{lt.ltc === 0 && lt.txCount > 0 ? ` Sie wurde ${lt.txCount}× benutzt und ist gerade leer – Ledger Live nimmt für jeden Empfang eine neue Adresse.` : ' Weicht der Betrag von Ledger Live ab, füge den Kontoschlüssel (Ltub…) hinzu – dann sieht Jarvis das ganze Konto.'}</>}</p>
                     {lt.moves.length > 0 && (
                       <details>
                         <summary className="cursor-pointer text-sm text-sea">Letzte Bewegungen ({lt.moves.length})</summary>

@@ -12,7 +12,7 @@ import { algoAddressHint, isAlgoAddress } from '@/lib/crypto/algo';
 import { isZecAddress, zecAddressHint } from '@/lib/crypto/zec';
 import { atomAddressHint, isAtomAddress } from '@/lib/crypto/atom';
 import { isXlmAddress, xlmAddressHint } from '@/lib/crypto/xlm';
-import { isLtcAddress, ltcAddressHint } from '@/lib/crypto/ltc';
+import { isLtcAddress, ltcAddressHint, parseLtcXpubInput } from '@/lib/crypto/ltc';
 import { CURRENCIES, parseAmount } from '@/lib/domain/networth';
 
 export type WalletState = { error?: string; ok?: string } | undefined;
@@ -22,8 +22,22 @@ export async function addWalletAction(_: WalletState, fd: FormData): Promise<Wal
   const s = await requireUser();
   const raw = String(fd.get('address') ?? '').trim();
   let label = String(fd.get('label') ?? '').trim().slice(0, 40);
+  // Litecoin-Konto als Ganzes: Kontoschlüssel (Ltub/Mtub) oder Ledger-Live-Export (JSON) – nur ansehen
+  const ltcXpub = /^(\{|Ltub|Mtub|zpub)/.test(raw) ? parseLtcXpubInput(raw) : null;
+  if (ltcXpub && 'error' in ltcXpub) return { error: ltcXpub.error };
+  if (ltcXpub) {
+    try {
+      await db(s).run((q) => q('insert into ltc_wallets (user_id, address, label) values (auth.uid(), $1, $2)', [ltcXpub.descriptor, label && label !== 'Ledger' ? label : 'Ledger LTC (ganzes Konto)']));
+    } catch (e) {
+      if (/ltc_wallets_unique/.test(e instanceof Error ? e.message : '')) return { error: 'Dieses Litecoin-Konto ist schon eingetragen.' };
+      return { error: friendlyDbError(e) };
+    }
+    revalidatePath('/', 'layout');
+    return { ok: 'Litecoin-Konto hinzugefügt – Jarvis sieht jetzt alle Adressen dieses Kontos (nur ansehen).' };
+  }
+  if (raw.startsWith('{')) return { error: 'Dieser Export wird nicht erkannt. Bitte die öffentliche Adresse oder den Litecoin-Export aus Ledger Live einfügen.' };
   const SECRET = '⚠️ Das sieht nach einer geheimen Wiederherstellungsphrase oder einem privaten Schlüssel aus. Es wurde NICHT gespeichert. Jarvis braucht nur die öffentliche Adresse. Gib deine 24 Wörter oder Schlüssel niemals irgendwo ein.';
-  if (raw.split(/\s+/).length >= 12 || /^s[1-9A-HJ-NP-Za-km-z]{25,}$/.test(raw) || /^(0x)?[0-9a-fA-F]{64}$/.test(raw) || /^[xyzt]prv/i.test(raw) || /^[5KL][1-9A-HJ-NP-Za-km-z]{50,51}$/.test(raw) || /^S[A-Z2-7]{55}$/.test(raw)) return { error: SECRET };
+  if (raw.split(/\s+/).length >= 12 || /^s[1-9A-HJ-NP-Za-km-z]{25,}$/.test(raw) || /^(0x)?[0-9a-fA-F]{64}$/.test(raw) || /^([xyzt]prv|Ltpv|Mtpv)/i.test(raw) || /^[5KL][1-9A-HJ-NP-Za-km-z]{50,51}$/.test(raw) || /^S[A-Z2-7]{55}$/.test(raw)) return { error: SECRET };
   let chain: 'xrp' | 'eth' | 'btc' | 'ada' | 'algo' | 'zec' | 'atom' | 'xlm' | 'ltc';
   if (/^([LM][1-9A-HJ-NP-Za-km-z]{26,33}|ltc1[0-9a-zA-Z]{20,})$/.test(raw) || /^(Ltub|Mtub)/.test(raw)) {
     if (!isLtcAddress(raw)) return { error: ltcAddressHint(raw) ?? 'Keine gültige Litecoin-Adresse (L…, M… oder ltc1…).' };

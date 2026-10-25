@@ -8,7 +8,7 @@ import { createHash } from 'node:crypto';
 const B58 = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';
 const sha256 = (b: Buffer) => createHash('sha256').update(b).digest();
 
-export function base58check(addr: string): Buffer | null {
+export function base58check(addr: string, size = 25): Buffer | null {
   let n = 0n;
   for (const ch of addr) {
     const i = B58.indexOf(ch);
@@ -19,8 +19,8 @@ export function base58check(addr: string): Buffer | null {
   if (hex.length % 2) hex = `0${hex}`;
   const lead = addr.match(/^1*/)?.[0].length ?? 0;
   const raw = Buffer.concat([Buffer.alloc(lead), n === 0n ? Buffer.alloc(0) : Buffer.from(hex, 'hex')]);
-  if (raw.length !== 25) return null;
-  const ok = sha256(sha256(raw.subarray(0, 21))).subarray(0, 4).equals(raw.subarray(21));
+  if (raw.length !== size) return null;
+  const ok = sha256(sha256(raw.subarray(0, size - 4))).subarray(0, 4).equals(raw.subarray(size - 4));
   return ok ? raw : null;
 }
 

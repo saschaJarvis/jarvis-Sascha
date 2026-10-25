@@ -11,9 +11,9 @@ export function AddWalletForm() {
     <form ref={ref} action={action} className="grid gap-3">
       <div>
         <label className="label" htmlFor="w-addr">Öffentliche Adresse (BTC, ETH, XRP, ADA, ALGO, ZEC, ATOM, XLM oder LTC)</label>
-        <input id="w-addr" name="address" required autoComplete="off" autoCapitalize="off" spellCheck={false} maxLength={120}
-          className="field mono text-sm" placeholder="bc1… / 0x… / r… / addr1… / t1… / cosmos1… / G… / M…" />
-        <p className="mt-1 text-xs text-muted">In Ledger Live: Konto → „Empfangen“ → Adresse kopieren. Die Art erkennt Jarvis selbst.</p>
+        <textarea id="w-addr" name="address" required autoComplete="off" autoCapitalize="off" spellCheck={false} maxLength={2000} rows={2}
+          className="field mono text-sm" placeholder="bc1… / 0x… / r… / addr1… / t1… / cosmos1… / G… / M… / Ltub…" />
+        <p className="mt-1 text-xs text-muted">In Ledger Live: Konto → „Empfangen“ → Adresse kopieren. Die Art erkennt Jarvis selbst. Für ein ganzes Litecoin-Konto: Konto bearbeiten → Erweitert → den Schlüssel (Ltub…) oder den ganzen Text einfügen.</p>
       </div>
       <div>
         <label className="label" htmlFor="w-label">Bezeichnung</label>
