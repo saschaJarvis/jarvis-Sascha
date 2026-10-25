@@ -30,7 +30,7 @@ export async function finishOnboarding(page: Page, name: string, demo: boolean) 
   await expect(page.getByRole('heading', { name: 'Womit starten?' })).toBeVisible();
   await page.getByLabel(demo ? /Mit Beispielen/ : /Leer/).check();
   await page.getByRole('button', { name: 'Los geht’s' }).click();
-  await expect(page.getByText('Jetzt das').or(page.getByText('Alles im Griff.'))).toBeVisible();
+  await expect(page.getByText('▸ Nächster Schritt').or(page.getByText('Alles im Griff.'))).toBeVisible();
 }
 
 export const uniqueEmail = (p: string) => `${p}-${Date.now()}-${Math.floor(Math.random() * 1e6)}@example.invalid`;

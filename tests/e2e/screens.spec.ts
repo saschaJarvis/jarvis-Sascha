@@ -9,6 +9,13 @@ test('Bildschirmfotos', async ({ page }) => {
   await signUpWithMfa(page, uniqueEmail('screens'));
   await finishOnboarding(page, 'Sascha', true);
   await shot('1-heute');
+  await page.setViewportSize({ width: 1600, height: 1000 });
+  await page.reload();
+  await page.screenshot({ path: 'docs/screens/0-bruecke-pc.png', fullPage: true });
+  await page.goto('/leben/dubai');
+  await page.screenshot({ path: 'docs/screens/0-dubai-pc.png', fullPage: true });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto('/');
   await page.goto('/aufgaben');
   await page.getByRole('link', { name: /Büromietvertrag Mainz – Kündigung/ }).click();
   await page.waitForURL(/\/aufgaben\/[0-9a-f-]{36}$/);

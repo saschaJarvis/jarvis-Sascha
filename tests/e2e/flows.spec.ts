@@ -32,8 +32,8 @@ test('Hauptablauf: Onboarding, Heute, Schnellerfassung, Aufgabe mit Nachweis, Be
   await finishOnboarding(page, 'Sascha', true);
 
   // Heute: genau eine Hauptaktion, max. 2 weitere
-  await expect(page.getByText('Jetzt das')).toBeVisible();
-  await expect(page.getByRole('heading', { level: 1 })).toContainText('Sascha');
+  await expect(page.getByText('▸ Nächster Schritt')).toBeVisible();
+  await expect(page.getByRole('region', { name: 'Lagebericht' })).toContainText('Sascha');
   const also = page.locator('section:has(h2:text("Auch wichtig")) li');
   expect(await also.count()).toBeLessThanOrEqual(2);
 

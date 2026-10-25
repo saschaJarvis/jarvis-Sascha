@@ -5,7 +5,7 @@ export const metadata: Metadata = {
   title: 'Jarvis',
   description: 'Dein ruhiger Assistent für Fristen, Rechnungen, Verträge und den Umzug nach Dubai.',
   manifest: '/manifest.webmanifest',
-  appleWebApp: { capable: true, title: 'Jarvis', statusBarStyle: 'default' },
+  appleWebApp: { capable: true, title: 'Jarvis', statusBarStyle: 'black-translucent' },
 };
 
 export const viewport: Viewport = {
@@ -13,8 +13,8 @@ export const viewport: Viewport = {
   initialScale: 1,
   viewportFit: 'cover',
   themeColor: [
-    { media: '(prefers-color-scheme: light)', color: '#f7f4ee' },
-    { media: '(prefers-color-scheme: dark)', color: '#12161e' },
+    { media: '(prefers-color-scheme: light)', color: '#03080e' },
+    { media: '(prefers-color-scheme: dark)', color: '#03080e' },
   ],
 };
 

@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { withService } from '@/server/db';
+import { getFx, getWeather } from '@/server/ext';
 
 export const dynamic = 'force-dynamic';
 
@@ -9,7 +10,9 @@ export async function GET() {
     const rows = await withService((q) => q<{ tables: number; transitions: number }>(
       `select (select count(*)::int from information_schema.tables where table_schema = 'public') as tables,
               (select count(*)::int from app.task_transitions) as transitions`));
-    return NextResponse.json({ ok: true, db: 'erreichbar', ...rows[0], region: process.env.VERCEL_REGION ?? 'lokal' },
+    const [w, fx] = await Promise.all([getWeather('Asia/Dubai'), getFx()]);
+    return NextResponse.json({ ok: true, db: 'erreichbar', ...rows[0], region: process.env.VERCEL_REGION ?? 'lokal',
+      wetter: w ? 'ok' : 'nicht abrufbar', kurs: fx ? 'ok' : 'nicht abrufbar' },
       { headers: { 'Cache-Control': 'no-store' } });
   } catch (e) {
     console.error('[health]', e);
