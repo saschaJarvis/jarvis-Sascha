@@ -257,12 +257,17 @@ export async function saveStatement(s: Session, documentId: string, a: Statement
     }
     if (!acc) {
       const name = `${a.bank.replace(/\s+AG$/i, '')} ${a.account_name || 'Girokonto'}`.slice(0, 60);
-      [acc] = await q<{ id: string }>(`insert into accounts (user_id, name, institution, kind, currency, iban_last4) values (auth.uid(), $1, $2, 'checking', $3, $4) returning id`,
-        [name, a.bank.slice(0, 60), cur, last4]);
+      const kind = /saving|spar|tagesgeld|festgeld|deposit/i.test(a.account_name ?? '') ? 'savings' : 'checking';
+      [acc] = await q<{ id: string }>(`insert into accounts (user_id, name, institution, kind, currency, iban_last4) values (auth.uid(), $1, $2, $5, $3, $4) returning id`,
+        [name, a.bank.slice(0, 60), cur, last4, kind]);
     }
     const [prev] = await q<{ balance_id: string | null }>('select balance_id from bank_statements where document_id = $1', [documentId]);
     let balanceId = prev?.balance_id ?? null;
-    if (balanceId) {
+    // Auszug ohne Buchungen und ohne Salden (alles 0): die Nullen sind Platzhalter, kein Kontostand
+    const placeholder = a.opening_balance === 0 && a.closing_balance === 0 && a.total_in === 0 && a.total_out === 0;
+    if (placeholder) {
+      balanceId = null;
+    } else if (balanceId) {
       await q(`update balances set as_of = $2, amount_minor = $3, currency = $4, account_id = $5 where id = $1`, [balanceId, a.period_to, minor(a.closing_balance), cur, acc.id]);
     } else {
       [{ id: balanceId }] = await q<{ id: string }>(`insert into balances (user_id, account_id, as_of, amount_minor, currency, source, certainty)
