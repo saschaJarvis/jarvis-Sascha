@@ -18,6 +18,7 @@ import { isSolAddress } from '@/lib/crypto/sol';
 import { descriptorOf, parseAccountKey } from '@/lib/crypto/xpub';
 import { blockbookLoad, detectScheme } from '@/server/blockbook';
 import { loadEthAccount, loadVetAccount, MANUAL_SYMBOLS } from '@/server/wallets';
+import { resolveSymbol } from '@/server/markets';
 import { CURRENCIES, parseAmount } from '@/lib/domain/networth';
 
 export type WalletState = { error?: string; ok?: string } | undefined;
@@ -209,17 +210,18 @@ export async function removeAccountAction(fd: FormData): Promise<void> {
 // ---------- Gold ----------
 export async function addGoldAction(_: WalletState, fd: FormData): Promise<WalletState> {
   const s = await requireUser();
-  const label = String(fd.get('label') ?? '').trim().slice(0, 60) || 'Gold';
+  const metal = fd.get('metal') === 'platinum' ? 'platinum' : 'gold';
+  const label = String(fd.get('label') ?? '').trim().slice(0, 60) || (metal === 'platinum' ? 'Platin' : 'Gold');
   const unit = String(fd.get('unit') ?? 'g');
   const qty = parseAmount(String(fd.get('qty') ?? ''));
   const purity = Number(fd.get('purity') ?? 999);
   const form = String(fd.get('form') ?? 'bar');
   if (qty == null || qty <= 0) return { error: 'Bitte die Menge als Zahl angeben, z. B. 100 oder 1,5.' };
-  if (![999, 995, 916, 875, 750, 585, 333].includes(purity)) return { error: 'Ungültiger Feingehalt.' };
+  if (![999, 995, 950, 916, 900, 875, 750, 585, 333].includes(purity)) return { error: 'Ungültiger Feingehalt.' };
   if (!['bar', 'coin', 'jewelry', 'other'].includes(form)) return { error: 'Ungültige Form.' };
   const grams = unit === 'oz' ? qty * 31.1034768 : unit === 'tola' ? qty * 11.6638038 : qty;
   try {
-    await db(s).run((q) => q('insert into gold_holdings (user_id, label, grams, purity, form) values (auth.uid(), $1, $2, $3, $4)', [label, grams.toFixed(3), purity, form]));
+    await db(s).run((q) => q('insert into gold_holdings (user_id, label, grams, purity, form, metal) values (auth.uid(), $1, $2, $3, $4, $5)', [label, grams.toFixed(3), purity, form, metal]));
   } catch (e) {
     return { error: friendlyDbError(e) };
   }
@@ -264,5 +266,41 @@ export async function removeManualAction(fd: FormData): Promise<void> {
   const s = await requireUser();
   const id = z.string().uuid().parse(fd.get('id'));
   await db(s).run((q) => q('update manual_crypto set deleted_at = now() where id = $1 and deleted_at is null', [id]));
+  revalidatePath('/', 'layout');
+}
+
+// ---------- Aktien / ETFs ----------
+export async function addStockAction(_: WalletState, fd: FormData): Promise<WalletState> {
+  const s = await requireUser();
+  const query = String(fd.get('query') ?? '').trim().slice(0, 60);
+  const qty = parseAmount(String(fd.get('qty') ?? ''));
+  const venue = String(fd.get('venue') ?? '').trim().slice(0, 40) || null;
+  if (!query) return { error: 'Bitte Kürzel, ISIN oder Namen eingeben, z. B. AAPL, SAP.DE oder IE00BK5BQT80.' };
+  if (qty == null || qty <= 0) return { error: 'Stückzahl bitte als Zahl, z. B. 25 oder 3,5.' };
+  const r = await resolveSymbol(query);
+  if (!r) return { error: `„${query}“ nicht gefunden. Versuch es mit der ISIN (steht in deinem Depot) oder dem Börsenkürzel.` };
+  const label = (String(fd.get('label') ?? '').trim() || r.name || r.symbol).slice(0, 60);
+  try {
+    await db(s).run((q) => q('insert into stock_holdings (user_id, symbol, name, isin, quantity, label, venue) values (auth.uid(), $1, $2, $3, $4, $5, $6)',
+      [r.symbol, r.name?.slice(0, 120) ?? null, r.isin, qty, label, venue]));
+  } catch (e) { return { error: friendlyDbError(e) }; }
+  revalidatePath('/', 'layout');
+  return { ok: `„${label}“ (${r.symbol}) hinzugefügt.` };
+}
+
+export async function setStockQuantityAction(_: WalletState, fd: FormData): Promise<WalletState> {
+  const s = await requireUser();
+  const id = z.string().uuid().safeParse(fd.get('id'));
+  const qty = parseAmount(String(fd.get('qty') ?? ''));
+  if (!id.success || qty == null || qty < 0) return { error: 'Stückzahl bitte als Zahl.' };
+  await db(s).run((q) => q('update stock_holdings set quantity = $2 where id = $1 and deleted_at is null', [id.data, qty]));
+  revalidatePath('/', 'layout');
+  return { ok: 'Stückzahl aktualisiert.' };
+}
+
+export async function removeStockAction(fd: FormData): Promise<void> {
+  const s = await requireUser();
+  const id = z.string().uuid().parse(fd.get('id'));
+  await db(s).run((q) => q('update stock_holdings set deleted_at = now() where id = $1 and deleted_at is null', [id]));
   revalidatePath('/', 'layout');
 }

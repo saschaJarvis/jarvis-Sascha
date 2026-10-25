@@ -18,11 +18,11 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
   const deletion = await db(s).run((q) => q<{ execute_after: Date }>('select execute_after from deletion_requests where cancelled_at is null and executed_at is null limit 1'));
   const ai = await db(s).run(async (q) => (await q<{ ok: boolean }>('select app.has_consent(auth.uid(), $1) as ok', [AI_CONSENT]))[0].ok);
   const paused = profile.paused_until && new Date(profile.paused_until) > new Date();
-  const [al] = await db(s).run((q) => q<{ kinds: Record<string, boolean> | null; pct: string; push_enabled: boolean; devices: number; bot: string | null; linked: boolean; code: string | null }>(
-    `select a.kinds, a.price_threshold_pct::text pct, a.push_enabled, (select count(*)::int from push_subscriptions) devices,
+  const [al] = await db(s).run((q) => q<{ kinds: Record<string, boolean> | null; pct: string; opct: string; push_enabled: boolean; devices: number; bot: string | null; linked: boolean; code: string | null }>(
+    `select a.kinds, a.price_threshold_pct::text pct, a.other_threshold_pct::text opct, a.push_enabled, (select count(*)::int from push_subscriptions) devices,
             a.telegram_bot_name bot, a.telegram_chat_id is not null linked, a.telegram_link_code code
        from alert_settings a where a.user_id = auth.uid()`));
-  const kinds = { outflow: true, inflow: true, price: true, statement: true, ...(al?.kinds ?? {}) };
+  const kinds = { outflow: true, inflow: true, price: true, statement: true, other: true, ...(al?.kinds ?? {}) };
 
   return (
     <div>
@@ -38,7 +38,7 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
       <div id="warnungen" className="scroll-mt-20">
         <Section title="Warnungen">
           <AlertSettings cfg={{
-            kinds, pct: al ? Number(al.pct) : 10, pushEnabled: !!al?.push_enabled && (al?.devices ?? 0) > 0, pushDevices: al?.devices ?? 0,
+            kinds, pct: al ? Number(al.pct) : 10, otherPct: al ? Number(al.opct) : 5, pushEnabled: !!al?.push_enabled && (al?.devices ?? 0) > 0, pushDevices: al?.devices ?? 0,
             telegramBot: al?.bot ?? null, telegramLinked: !!al?.linked, telegramCode: al?.code ?? null,
             vapidKey: process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY ?? null,
           }} />

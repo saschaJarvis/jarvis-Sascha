@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { coinPrices, ethTokenSymbol, loadAdaAccount, loadAlgoAccount, loadBtcAccount, loadEthAccount, loadXrpAccount, loadZecAccount, loadAtomAccount, loadXlmAccount, loadLtcAccount, loadDotAccount, loadVetAccount, loadSolAccount } from '@/server/wallets';
 import { ETH_TOKENS } from '@/lib/crypto/eth';
 import { goldPrice } from '@/server/networth';
+import { eurPer, platinumPrice, quote, resolveSymbol } from '@/server/markets';
 
 export const dynamic = 'force-dynamic';
 
@@ -27,7 +28,11 @@ export async function GET() {
     loadSolAccount('EPjFWdd5AufqSSqeM2qN1xzybapC8G4wEGGkZwyTDt1v')]);
   // Token-Verträge gegenprüfen: liefert der Vertrag das erwartete Symbol?
   const tokenCheck = Object.fromEntries(await Promise.all(ETH_TOKENS.map(async (t) => [t.symbol, (await ethTokenSymbol(t.contract)) === t.symbol] as const)));
+  // Aktien/Platin: Referenzwerte (Apple in USD, SAP über ISIN → deutsche Börse)
+  const [plat, aapl, sap, usdEur] = await Promise.all([platinumPrice(), quote('AAPL'), resolveSymbol('DE0007164600'), eurPer('USD')]);
   return NextResponse.json({
+    platin: plat ? { ok: true, quelle: plat.source } : { ok: false },
+    aktien: { aapl: aapl ? { ok: true, waehrung: aapl.currency, vortag: aapl.prevClose != null } : { ok: false }, isinSuche: sap ? { ok: true, symbol: sap.symbol } : { ok: false }, usdEur: usdEur != null },
     ethTokens: tokenCheck,
     xrpl: acc.error ? { ok: false, fehler: acc.error } : { ok: true, aktiviert: acc.activated, bewegungen: acc.moves.length, reserve: acc.reserveXrp != null },
     eth: eth.error ? { ok: false, fehler: eth.error } : { ok: true, tokens: eth.tokens.filter((t) => Number.isFinite(t.amount)).length },

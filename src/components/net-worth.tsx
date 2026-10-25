@@ -3,12 +3,14 @@ import type { NetWorth } from '@/server/networth';
 
 const nf = (n: number, d = 0) => n.toLocaleString('de-DE', { minimumFractionDigits: d, maximumFractionDigits: d });
 
-/** Gesamtvermögen: Konten + Krypto + Gold. Basis AED, dazu EUR. Fehlende Kurse werden genannt, nie geschätzt. */
+/** Gesamtvermögen: Konten + Krypto + Gold + Platin + Aktien. Basis AED, dazu EUR. Fehlende Kurse werden genannt, nie geschätzt. */
 export function NetWorthBlock({ nw, compact = false }: { nw: NetWorth; compact?: boolean }) {
   const parts = [
     { key: 'konten', label: 'Konten', aed: nw.accounts.aed, n: nw.accounts.count, sub: `${nw.accounts.count} Konto${nw.accounts.count === 1 ? '' : 'en'}`, color: 'bg-sea' },
     { key: 'krypto', label: 'Krypto', aed: nw.crypto.aed, n: nw.crypto.count, sub: nw.crypto.count ? Object.entries(nw.crypto.holdings).filter(([, v]) => v != null).sort(([a], [b]) => ['BTC', 'ETH', 'LTC', 'XRP', 'ADA', 'ALGO', 'ZEC', 'ATOM', 'XLM', 'DOT', 'VET', 'SOL', 'QNT', 'FET', 'LINK', 'RENDER', 'GALA', 'HBAR', 'CSPR', 'FIL', 'BEST', 'IOTA', 'AVAX', 'TRX', 'USDT', 'USDC'].indexOf(a) - ['BTC', 'ETH', 'LTC', 'XRP', 'ADA', 'ALGO', 'ZEC', 'ATOM', 'XLM', 'DOT', 'VET', 'SOL', 'QNT', 'FET', 'LINK', 'RENDER', 'GALA', 'HBAR', 'CSPR', 'FIL', 'BEST', 'IOTA', 'AVAX', 'TRX', 'USDT', 'USDC'].indexOf(b)).map(([k, v]) => `${nf(v ?? 0, k === 'BTC' ? 4 : k === 'ETH' || k === 'QNT' || k === 'ZEC' || k === 'ATOM' || k === 'LTC' || k === 'DOT' ? 2 : k === 'FET' ? 0 : k === 'LINK' ? 1 : 0)} ${k}`).join(' · ') || '0' : 'keine Wallets', color: 'bg-good' },
     { key: 'gold', label: 'Gold', aed: nw.gold.aed, n: nw.gold.count, sub: nw.gold.count ? `${nf(nw.gold.grams, nw.gold.grams % 1 ? 1 : 0)} g` : 'kein Gold', color: 'bg-warn' },
+    { key: 'platin', label: 'Platin', aed: nw.platinum.aed, n: nw.platinum.count, sub: nw.platinum.count ? `${nf(nw.platinum.grams, nw.platinum.grams % 1 ? 1 : 0)} g` : 'kein Platin', color: 'bg-[#c9d6df]' },
+    { key: 'aktien', label: 'Aktien', aed: nw.stocks.aed, n: nw.stocks.count, sub: nw.stocks.count ? `${nw.stocks.count} Position${nw.stocks.count === 1 ? '' : 'en'}` : 'keine Aktien', color: 'bg-[#b48cff]' },
   ];
   const pos = parts.reduce((n, p) => n + Math.max(0, p.aed), 0);
   const empty = parts.every((p) => p.n === 0);
@@ -40,7 +42,7 @@ export function NetWorthBlock({ nw, compact = false }: { nw: NetWorth; compact?:
       {nw.crypto.change && <CryptoChange ch={nw.crypto.change} asOf={nw.crypto.asOf} />}
 
       {nw.missing > 0 && <p className="text-xs text-warn">▲ {nw.missing} Posten ohne aktuellen Kurs – nicht mitgezählt.</p>}
-      {empty && <p className="text-sm text-muted">Noch nichts erfasst. Konten, Krypto und Gold trägst du unter Finanzen ein.</p>}
+      {empty && <p className="text-sm text-muted">Noch nichts erfasst. Konten, Krypto, Gold, Platin und Aktien trägst du unter Finanzen ein.</p>}
     </div>
   );
 }

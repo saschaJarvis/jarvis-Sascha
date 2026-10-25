@@ -89,12 +89,14 @@ export async function disconnectTelegramAction(): Promise<void> {
 // ---------- Was gemeldet wird ----------
 export async function saveAlertKindsAction(_: AlertState, fd: FormData): Promise<AlertState> {
   const s = await requireUser();
-  const kinds = { outflow: fd.get('outflow') === 'on', inflow: fd.get('inflow') === 'on', price: fd.get('price') === 'on', statement: fd.get('statement') === 'on' };
+  const kinds = { outflow: fd.get('outflow') === 'on', inflow: fd.get('inflow') === 'on', price: fd.get('price') === 'on', statement: fd.get('statement') === 'on', other: fd.get('other') === 'on' };
+  const opct = Number(String(fd.get('opct') ?? '5').replace(',', '.'));
   const pct = Number(String(fd.get('pct') ?? '10').replace(',', '.'));
   if (!Number.isFinite(pct) || pct < 1 || pct > 90) return { error: 'Schwelle bitte zwischen 1 und 90 %.' };
+  if (!Number.isFinite(opct) || opct < 1 || opct > 90) return { error: 'Schwelle bitte zwischen 1 und 90 %.' };
   await db(s).run(async (q) => {
     await q(ensureRow);
-    await q('update alert_settings set kinds = $1, price_threshold_pct = $2 where user_id = auth.uid()', [JSON.stringify(kinds), pct]);
+    await q('update alert_settings set kinds = $1, price_threshold_pct = $2, other_threshold_pct = $3 where user_id = auth.uid()', [JSON.stringify(kinds), pct, opct]);
   });
   revalidatePath('/leben/einstellungen');
   return { ok: 'Gespeichert.' };
