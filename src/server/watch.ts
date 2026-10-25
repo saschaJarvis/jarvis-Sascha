@@ -1,7 +1,7 @@
 import 'server-only';
 import { withService } from './db';
 import { walletAssets, type Asset } from './networth';
-import { coinPrices, type Coin, type PriceCoin } from './wallets';
+import { coinPrices, MANUAL_SYMBOLS, type Coin, type PriceCoin } from './wallets';
 import { AED_PER_USD } from '@/lib/domain/networth';
 import { getFx } from './ext';
 import { dispatchAlerts, queueAlert } from './notify';
@@ -38,9 +38,12 @@ export async function runWatch(): Promise<{ users: number; alerts: number; sent:
 
   for (const u of users) {
     const wallets = await withService((q) => q<{ id: string; chain: Coin; address: string; label: string }>(userWalletsSql, [u.user_id]));
-    if (!wallets.length) continue;
+    if (!wallets.length && !(await withService((q) => q('select 1 from manual_crypto where deleted_at is null and user_id = $1 limit 1', [u.user_id]))).length) continue;
     const views = await Promise.all(wallets.map(async (w) => ({ w, v: await walletAssets(w).catch(() => ({ error: true, assets: [] as Asset[] })) })));
-    const needed = [...new Set(views.flatMap((x) => x.v.assets.map((a) => a.price)).filter((p): p is PriceCoin => p !== 'usd'))];
+    // Von Hand gepflegte Bestände (z. B. Bitpanda): nur für die Kurswarnung, nicht für Ab-/Zuflüsse
+    const manual = await withService((q) => q<{ symbol: string; amount: string }>('select symbol, amount::text from manual_crypto where deleted_at is null and user_id = $1', [u.user_id]));
+    const manualAssets: Asset[] = manual.filter((m) => MANUAL_SYMBOLS[m.symbol]).map((m) => ({ symbol: m.symbol, amount: Number(m.amount), price: MANUAL_SYMBOLS[m.symbol] }));
+    const needed = [...new Set([...views.flatMap((x) => x.v.assets), ...manualAssets].map((a) => a.price).filter((p): p is PriceCoin => p !== 'usd'))];
     const prices = await coinPrices(needed);
     const eurOf = (a: { price: PriceCoin | 'usd' }) => (a.price === 'usd' ? (eurAed ? AED_PER_USD / eurAed : null) : prices[a.price]?.eur ?? null);
 
@@ -84,7 +87,7 @@ export async function runWatch(): Promise<{ users: number; alerts: number; sent:
       await withService((q) => q('update alert_settings set price_anchor = $2, price_anchor_day = $3 where user_id = $1', [u.user_id, JSON.stringify(nowPrices), day]));
     } else if (u.kinds?.price) {
       let then = 0, now = 0;
-      for (const { v } of views) {
+      for (const v of [...views.map((x) => x.v), { error: false, assets: manualAssets }]) {
         if (v.error) continue;
         for (const a of v.assets) {
           if (a.price === 'usd' || !Number.isFinite(a.amount)) continue;

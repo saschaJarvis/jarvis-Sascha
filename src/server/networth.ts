@@ -2,7 +2,7 @@ import 'server-only';
 import { db } from './repo';
 import type { Session } from './auth';
 import { getFx } from './ext';
-import { coinPrices, loadAdaAccount, loadAlgoAccount, loadBtcAccount, loadEthAccount, loadXrpAccount, loadZecAccount, loadAtomAccount, loadXlmAccount, loadLtcAccount, loadDotAccount, loadVetAccount, loadSolAccount, WALLETS_SQL, type Coin, type PriceCoin } from './wallets';
+import { coinPrices, loadAdaAccount, loadAlgoAccount, loadBtcAccount, loadEthAccount, loadXrpAccount, loadZecAccount, loadAtomAccount, loadXlmAccount, loadLtcAccount, loadDotAccount, loadVetAccount, loadSolAccount, WALLETS_SQL, MANUAL_SQL, MANUAL_SYMBOLS, type ManualRow, type Coin, type PriceCoin } from './wallets';
 import { goldValueUsd, sumParts, toAed, AED_PER_USD } from '@/lib/domain/networth';
 import { portfolioChange } from '@/lib/domain/change';
 
@@ -76,6 +76,7 @@ export async function loadNetWorth(s: Session): Promise<NetWorth> {
           where a.deleted_at is null and not a.is_demo and a.kind <> 'crypto_wallet' order by a.created_at`),
       wallets: await q<{ chain: Coin; address: string }>(WALLETS_SQL),
       gold: await q<GoldRow>(`select id, label, grams::text, purity, form from gold_holdings where deleted_at is null order by created_at`),
+      manual: await q<ManualRow>(MANUAL_SQL),
     })),
     getFx(),
   ]);
@@ -84,7 +85,11 @@ export async function loadNetWorth(s: Session): Promise<NetWorth> {
   const accRows = rows.accounts.map((a) => ({ ...a, aed: a.amount_minor == null ? 0 : toAed(Number(a.amount_minor) / 100, a.currency, eurAed) }));
   const acc = sumParts(accRows.map((a) => a.aed));
 
-  const views = await Promise.all(rows.wallets.map(walletAssets));
+  const views = [
+    ...(await Promise.all(rows.wallets.map(walletAssets))),
+    // Von Hand gepflegte Bestände (z. B. Bitpanda) – zum aktuellen Kurs
+    ...rows.manual.filter((m) => MANUAL_SYMBOLS[m.symbol]).map((m) => ({ error: false, assets: [{ symbol: m.symbol, amount: Number(m.amount), price: MANUAL_SYMBOLS[m.symbol] } as Asset] })),
+  ];
   const needed = [...new Set(views.flatMap((v) => v.assets.map((x) => x.price)).filter((p): p is PriceCoin => p !== 'usd'))];
   const prices = await coinPrices(needed);
   const priceAed = (x: Asset) => (x.price === 'usd' ? AED_PER_USD : prices[x.price]?.aed ?? null);
@@ -133,7 +138,7 @@ export async function loadNetWorth(s: Session): Promise<NetWorth> {
     eurAed, totalAed: total.aed, totalEur: eurAed ? total.aed / eurAed : null, missing,
     accounts: { aed: acc.aed, count: accRows.length, rows: accRows },
     crypto: {
-      aed: crypto.aed, count: rows.wallets.length, holdings, error: crypto.missing > 0, coins, asOf: new Date(),
+      aed: crypto.aed, count: rows.wallets.length + rows.manual.length, holdings, error: crypto.missing > 0, coins, asOf: new Date(),
       change: changeItems.length ? { aed: ch.abs, eur: eurAed ? ch.abs / eurAed : null, pct: ch.pct, complete: ch.complete } : null,
     },
     gold: { aed: gold.aed, count: rows.gold.length, grams: rows.gold.reduce((n, g) => n + Number(g.grams), 0), price: gp, rows: goldRows },

@@ -1,12 +1,12 @@
 import { requireUser } from '@/server/auth';
 import { db } from '@/server/repo';
-import { coinPrices, loadAdaAccount, loadAlgoAccount, loadBtcAccount, loadEthAccount, loadXrpAccount, loadZecAccount, loadAtomAccount, loadXlmAccount, loadLtcAccount, loadDotAccount, loadVetAccount, loadSolAccount, WALLETS_SQL, type AdaAccount, type AlgoAccount, type BtcAccount, type Coin, type EthAccount, type PriceCoin, type XrpAccount, type ZecAccount, type AtomAccount, type XlmAccount, type LtcAccount, type DotAccount, type VetAccount, type SolAccount } from '@/server/wallets';
+import { coinPrices, loadAdaAccount, loadAlgoAccount, loadBtcAccount, loadEthAccount, loadXrpAccount, loadZecAccount, loadAtomAccount, loadXlmAccount, loadLtcAccount, loadDotAccount, loadVetAccount, loadSolAccount, WALLETS_SQL, MANUAL_SQL, MANUAL_SYMBOLS, type ManualRow, type AdaAccount, type AlgoAccount, type BtcAccount, type Coin, type EthAccount, type PriceCoin, type XrpAccount, type ZecAccount, type AtomAccount, type XlmAccount, type LtcAccount, type DotAccount, type VetAccount, type SolAccount } from '@/server/wallets';
 import { AED_PER_USD } from '@/lib/domain/networth';
 import { PageTitle, Section } from '@/components/ui';
 import { timeAgo } from '@/lib/news';
-import { AddAccountForm, AddGoldForm, AddWalletForm, BalanceForm } from './wallet-form';
+import { AddAccountForm, AddGoldForm, AddManualForm, AddWalletForm, BalanceForm, ManualAmountForm } from './wallet-form';
 import { ConnectSection } from '../../kalender/connect-form';
-import { removeAccountAction, removeGoldAction, removeWalletAction } from './actions';
+import { removeAccountAction, removeGoldAction, removeManualAction, removeWalletAction } from './actions';
 import { loadNetWorth } from '@/server/networth';
 import { CryptoChange, NetWorthCard } from '@/components/net-worth';
 import { AutoRefresh } from '@/components/auto-refresh';
@@ -28,11 +28,13 @@ export default async function FinancePage() {
   const s = await requireUser();
   // Offene Kontoauszüge im Hintergrund auswerten (Ergebnis erscheint beim nächsten Auto-Refresh)
   await kickStatements(s).catch((e) => console.error('[statement] kick', e));
-  const wallets = await db(s).run((q) => q<{ id: string; chain: Coin; address: string; label: string }>(
-    WALLETS_SQL));
+  const [wallets, manual] = await db(s).run(async (q) => [
+    await q<{ id: string; chain: Coin; address: string; label: string }>(WALLETS_SQL),
+    await q<ManualRow>(MANUAL_SQL),
+  ] as const);
   const [views, prices, nw] = await Promise.all([
     Promise.all(wallets.map((w): Promise<XrpAccount | EthAccount | BtcAccount | AdaAccount | AlgoAccount | ZecAccount | AtomAccount | XlmAccount | LtcAccount | DotAccount | VetAccount | SolAccount> => (w.chain === 'sol' ? loadSolAccount(w.address) : w.chain === 'vet' ? loadVetAccount(w.address) : w.chain === 'dot' ? loadDotAccount(w.address) : w.chain === 'ltc' ? loadLtcAccount(w.address) : w.chain === 'xlm' ? loadXlmAccount(w.address) : w.chain === 'atom' ? loadAtomAccount(w.address) : w.chain === 'zec' ? loadZecAccount(w.address) : w.chain === 'eth' ? loadEthAccount(w.address) : w.chain === 'btc' ? loadBtcAccount(w.address) : w.chain === 'ada' ? loadAdaAccount(w.address) : w.chain === 'algo' ? loadAlgoAccount(w.address) : loadXrpAccount(w.address)))),
-    coinPrices([...new Set<PriceCoin>([...wallets.map((w) => w.chain), ...(wallets.some((w) => w.chain === 'eth') ? ['qnt' as const, 'fet' as const, 'link' as const, 'gala' as const] : []), ...(wallets.some((w) => w.chain === 'sol') ? ['render' as const] : [])])]),
+    coinPrices([...new Set<PriceCoin>([...wallets.map((w) => w.chain), ...(wallets.some((w) => w.chain === 'eth') ? ['qnt' as const, 'fet' as const, 'link' as const, 'gala' as const] : []), ...(wallets.some((w) => w.chain === 'sol') ? ['render' as const] : []), ...manual.map((m) => MANUAL_SYMBOLS[m.symbol]).filter(Boolean)])]),
     loadNetWorth(s),
   ]);
   const statements = await loadStatements(s);
@@ -110,7 +112,7 @@ export default async function FinancePage() {
           <div className="card mb-3 grid gap-1">
             <p className="eyebrow">Krypto gesamt</p>
             <p className="text-2xl font-bold">{nf(nw.crypto.aed, 0)} AED</p>
-            <p className="text-muted">{nw.eurAed ? `≈ ${nf(nw.crypto.aed / nw.eurAed, 0)} € · ` : ''}{Object.entries(nw.crypto.holdings).filter(([, v]) => v != null).sort(([a], [b]) => ['BTC', 'ETH', 'LTC', 'XRP', 'ADA', 'ALGO', 'ZEC', 'ATOM', 'XLM', 'DOT', 'VET', 'SOL', 'QNT', 'FET', 'LINK', 'RENDER', 'GALA', 'USDT', 'USDC'].indexOf(a) - ['BTC', 'ETH', 'LTC', 'XRP', 'ADA', 'ALGO', 'ZEC', 'ATOM', 'XLM', 'DOT', 'VET', 'SOL', 'QNT', 'FET', 'LINK', 'RENDER', 'GALA', 'USDT', 'USDC'].indexOf(b)).map(([k, v]) => `${nf(v ?? 0, k === 'BTC' ? 8 : k === 'ETH' ? 4 : 2)} ${k}`).join(' · ')}</p>
+            <p className="text-muted">{nw.eurAed ? `≈ ${nf(nw.crypto.aed / nw.eurAed, 0)} € · ` : ''}{Object.entries(nw.crypto.holdings).filter(([, v]) => v != null).sort(([a], [b]) => ['BTC', 'ETH', 'LTC', 'XRP', 'ADA', 'ALGO', 'ZEC', 'ATOM', 'XLM', 'DOT', 'VET', 'SOL', 'QNT', 'FET', 'LINK', 'RENDER', 'GALA', 'HBAR', 'USDT', 'USDC'].indexOf(a) - ['BTC', 'ETH', 'LTC', 'XRP', 'ADA', 'ALGO', 'ZEC', 'ATOM', 'XLM', 'DOT', 'VET', 'SOL', 'QNT', 'FET', 'LINK', 'RENDER', 'GALA', 'HBAR', 'USDT', 'USDC'].indexOf(b)).map(([k, v]) => `${nf(v ?? 0, k === 'BTC' ? 8 : k === 'ETH' ? 4 : 2)} ${k}`).join(' · ')}</p>
             {nw.crypto.error && <p className="text-sm text-warn">Ein Teil ist gerade ohne Kurs oder Netz – nicht mitgezählt.</p>}
             {nw.crypto.change && <div className="mt-1"><CryptoChange ch={nw.crypto.change} asOf={nw.crypto.asOf} label="24 h" /></div>}
             {nw.crypto.coins.length > 0 && (
@@ -316,6 +318,36 @@ export default async function FinancePage() {
             );
           })}
         </ul>
+
+        <div className="mt-4 grid gap-2">
+          <p className="eyebrow">Auf Börsen · von Hand</p>
+          {manual.map((m) => {
+            const p = prices[MANUAL_SYMBOLS[m.symbol]];
+            const amt = Number(m.amount);
+            return (
+              <div key={m.id} className="card grid gap-2">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="font-semibold">{m.label} <span className="mono text-xs text-muted">{m.symbol}</span></p>
+                    <p className="text-xs text-muted">{m.venue ? `${m.venue} · ` : ''}Menge von Hand – nur Kurswarnung, keine Abfluss-Warnung.</p>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-lg font-bold">{nf(amt, amt % 1 ? 2 : 0)} {m.symbol}</p>
+                    {p && <p className="text-sm text-muted">≈ {nf(amt * p.eur)} €</p>}
+                  </div>
+                </div>
+                <details>
+                  <summary className="cursor-pointer text-sm text-sea">Menge ändern</summary>
+                  <div className="mt-2"><ManualAmountForm id={m.id} label={m.label} /></div>
+                  <form action={removeManualAction} className="mt-2"><input type="hidden" name="id" value={m.id} /><button className="text-xs text-muted underline">Entfernen</button></form>
+                </details>
+              </div>
+            );
+          })}
+          <ConnectSection initialOpen={false} title="+ Bestand auf einer Börse eintragen (z. B. Bitpanda)">
+            <div className="mt-3"><AddManualForm symbols={Object.keys(MANUAL_SYMBOLS)} /></div>
+          </ConnectSection>
+        </div>
 
         <div className="mt-3">
           <ConnectSection initialOpen={wallets.length === 0} title="+ Wallet-Adresse hinzufügen (BTC / ETH / XRP / ADA / ALGO / ZEC / ATOM / XLM / LTC / DOT / VET / SOL)">

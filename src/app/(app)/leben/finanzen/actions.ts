@@ -17,7 +17,7 @@ import { dotAddressHint, isDotAddress } from '@/lib/crypto/dot';
 import { isSolAddress } from '@/lib/crypto/sol';
 import { descriptorOf, parseAccountKey } from '@/lib/crypto/xpub';
 import { blockbookLoad, detectScheme } from '@/server/blockbook';
-import { loadEthAccount, loadVetAccount } from '@/server/wallets';
+import { loadEthAccount, loadVetAccount, MANUAL_SYMBOLS } from '@/server/wallets';
 import { CURRENCIES, parseAmount } from '@/lib/domain/networth';
 
 export type WalletState = { error?: string; ok?: string } | undefined;
@@ -231,5 +231,38 @@ export async function removeGoldAction(fd: FormData): Promise<void> {
   const s = await requireUser();
   const id = z.string().uuid().parse(fd.get('id'));
   await db(s).run((q) => q('update gold_holdings set deleted_at = now() where id = $1 and deleted_at is null', [id]));
+  revalidatePath('/', 'layout');
+}
+
+// ---------- Krypto auf Börsen ohne Abruf (z. B. Bitpanda) ----------
+export async function addManualCryptoAction(_: WalletState, fd: FormData): Promise<WalletState> {
+  const s = await requireUser();
+  const symbol = String(fd.get('symbol') ?? '').trim().toUpperCase();
+  const amount = parseAmount(String(fd.get('amount') ?? ''));
+  const venue = String(fd.get('venue') ?? '').trim().slice(0, 40) || null;
+  const label = String(fd.get('label') ?? '').trim().slice(0, 40) || `${venue ?? 'Börse'} ${symbol}`;
+  if (!MANUAL_SYMBOLS[symbol]) return { error: `Für ${symbol || 'diesen Coin'} hat Jarvis noch keinen Kurs. Möglich: ${Object.keys(MANUAL_SYMBOLS).join(', ')}.` };
+  if (amount == null || amount < 0) return { error: 'Menge bitte als Zahl, z. B. 55.000.' };
+  try {
+    await db(s).run((q) => q('insert into manual_crypto (user_id, symbol, amount, label, venue) values (auth.uid(), $1, $2, $3, $4)', [symbol, amount, label, venue]));
+  } catch (e) { return { error: friendlyDbError(e) }; }
+  revalidatePath('/', 'layout');
+  return { ok: `„${label}“ hinzugefügt.` };
+}
+
+export async function setManualAmountAction(_: WalletState, fd: FormData): Promise<WalletState> {
+  const s = await requireUser();
+  const id = z.string().uuid().safeParse(fd.get('id'));
+  const amount = parseAmount(String(fd.get('amount') ?? ''));
+  if (!id.success || amount == null || amount < 0) return { error: 'Menge bitte als Zahl.' };
+  await db(s).run((q) => q('update manual_crypto set amount = $2 where id = $1 and deleted_at is null', [id.data, amount]));
+  revalidatePath('/', 'layout');
+  return { ok: 'Menge aktualisiert.' };
+}
+
+export async function removeManualAction(fd: FormData): Promise<void> {
+  const s = await requireUser();
+  const id = z.string().uuid().parse(fd.get('id'));
+  await db(s).run((q) => q('update manual_crypto set deleted_at = now() where id = $1 and deleted_at is null', [id]));
   revalidatePath('/', 'layout');
 }

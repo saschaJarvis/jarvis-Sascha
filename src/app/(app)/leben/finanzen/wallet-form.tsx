@@ -1,6 +1,6 @@
 'use client';
 import { useActionState, useEffect, useRef } from 'react';
-import { addAccountAction, addGoldAction, addWalletAction, setBalanceAction } from './actions';
+import { addAccountAction, addGoldAction, addManualCryptoAction, addWalletAction, setBalanceAction, setManualAmountAction } from './actions';
 import { ErrorNote, OkNote, Submit } from '@/components/form';
 
 export function AddWalletForm() {
@@ -110,6 +110,41 @@ export function AddGoldForm() {
         </div>
       </div>
       <Submit>Gold hinzufügen</Submit>
+      <ErrorNote error={state?.error} /><OkNote message={state?.ok} />
+    </form>
+  );
+}
+
+export function AddManualForm({ symbols }: { symbols: string[] }) {
+  const [state, action] = useActionState(addManualCryptoAction, undefined);
+  const ref = useRef<HTMLFormElement>(null);
+  useEffect(() => { if (state?.ok) ref.current?.reset(); }, [state]);
+  return (
+    <form ref={ref} action={action} className="grid gap-3">
+      <div className="grid grid-cols-2 gap-2">
+        <div><label className="label" htmlFor="m-sym">Coin</label>
+          <select id="m-sym" name="symbol" className="field" defaultValue="HBAR">{symbols.map((x) => <option key={x}>{x}</option>)}</select></div>
+        <div><label className="label" htmlFor="m-amt">Menge</label>
+          <input id="m-amt" name="amount" required inputMode="decimal" className="field" placeholder="55.000" /></div>
+      </div>
+      <div className="grid grid-cols-2 gap-2">
+        <div><label className="label" htmlFor="m-venue">Wo?</label><input id="m-venue" name="venue" maxLength={40} className="field" placeholder="Bitpanda" /></div>
+        <div><label className="label" htmlFor="m-label">Bezeichnung</label><input id="m-label" name="label" maxLength={40} className="field" placeholder="Bitpanda HBAR" /></div>
+      </div>
+      <Submit>Hinzufügen</Submit>
+      <ErrorNote error={state?.error} /><OkNote message={state?.ok} />
+    </form>
+  );
+}
+
+export function ManualAmountForm({ id, label }: { id: string; label: string }) {
+  const [state, action] = useActionState(setManualAmountAction, undefined);
+  return (
+    <form action={action} className="flex flex-wrap items-center gap-2">
+      <input type="hidden" name="id" value={id} />
+      <label className="sr-only" htmlFor={`ma-${id}`}>Neue Menge {label}</label>
+      <input id={`ma-${id}`} name="amount" required inputMode="decimal" className="field min-h-9 flex-1 py-1" placeholder="neue Menge" />
+      <button className="btn btn-secondary min-h-9 px-3 text-[.66rem]">Speichern</button>
       <ErrorNote error={state?.error} /><OkNote message={state?.ok} />
     </form>
   );

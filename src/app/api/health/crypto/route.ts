@@ -8,7 +8,7 @@ export const dynamic = 'force-dynamic';
 /** Betriebscheck: XRP Ledger + Kurs erreichbar? Prüft nur ein bekanntes öffentliches Konto (Genesis), keine Nutzerdaten. */
 export async function GET() {
   // Öffentliche Referenzkonten: XRP-Genesis, Ethereum-Stiftung (bekannt, öffentlich)
-  const [acc, eth, btc, prices, gold, ada, algo, zec, atom, xlm, ltc, dot, vet, sol] = await Promise.all([loadXrpAccount('rHb9CJAWyB4rj91VRWn96DkukG4bwdtyTh'), loadEthAccount('0xde0B295669a9FD93d5F28D9Ec85E40f4cb697BAe'), loadBtcAccount('1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa'), coinPrices(['xrp', 'eth', 'btc', 'ada', 'algo', 'zec', 'atom', 'xlm', 'ltc', 'dot', 'vet', 'sol', 'qnt', 'fet', 'link', 'render', 'gala']), goldPrice(),
+  const [acc, eth, btc, prices, gold, ada, algo, zec, atom, xlm, ltc, dot, vet, sol] = await Promise.all([loadXrpAccount('rHb9CJAWyB4rj91VRWn96DkukG4bwdtyTh'), loadEthAccount('0xde0B295669a9FD93d5F28D9Ec85E40f4cb697BAe'), loadBtcAccount('1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa'), coinPrices(['xrp', 'eth', 'btc', 'ada', 'algo', 'zec', 'atom', 'xlm', 'ltc', 'dot', 'vet', 'sol', 'qnt', 'fet', 'link', 'render', 'gala', 'hbar']), goldPrice(),
     loadAdaAccount('addr1qx2fxv2umyhttkxyxp8x0dlpdt3k6cwng5pxj3jhsydzer3n0d3vllmyqwsx5wktcd8cc3sq835lu7drv2xwl2wywfgse35a3x'),
     loadAlgoAccount('AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAY5HFKQ'),
     // Zcash: Adresse der Zcash-Gründer-Belohnung (öffentlich, viele Bewegungen)
@@ -41,7 +41,7 @@ export async function GET() {
     xlm: xlm.error ? { ok: false, fehler: xlm.error } : { ok: true, aktiviert: xlm.activated },
     atom: atom.error ? { ok: false, fehler: atom.error } : { ok: true },
     zec: zec.error ? { ok: false, fehler: zec.error } : { ok: true, quelle: zec.source, bewegungen: zec.moves.length },
-    kurs: Object.fromEntries((['xrp', 'eth', 'btc', 'ada', 'algo', 'zec', 'atom', 'xlm', 'ltc', 'dot', 'vet', 'sol', 'qnt', 'fet', 'link', 'render', 'gala'] as const).map((c) => [c, prices[c] ? { quelle: prices[c]!.source, h24: prices[c]!.change24h != null } : false])),
+    kurs: Object.fromEntries((['xrp', 'eth', 'btc', 'ada', 'algo', 'zec', 'atom', 'xlm', 'ltc', 'dot', 'vet', 'sol', 'qnt', 'fet', 'link', 'render', 'gala', 'hbar'] as const).map((c) => [c, prices[c] ? { quelle: prices[c]!.source, h24: prices[c]!.change24h != null } : false])),
     gold: gold ? { ok: true, quelle: gold.source } : { ok: false },
   }, { headers: { 'Cache-Control': 'no-store' } });
 }
