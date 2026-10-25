@@ -7,6 +7,7 @@ import { db } from './repo';
 import { withService } from './db';
 import { usingSupabase, type Session } from './auth';
 import { supabaseUser } from './supabase';
+import { knownFineWeight } from '@/lib/domain/metalWeights';
 import { callForTool, CLAUDE_MODEL, claudeAvailable, AI_CONSENT, fake, type Block, type Tool } from './claude';
 
 /**
@@ -33,9 +34,16 @@ export const InvoiceAnalysis = z.object({
     product: txt(60),
     form: z.enum(['bar', 'coin', 'jewelry', 'other']).catch('other'),
     pieces: z.number().int().min(1).max(100000),
-    weight_per_piece_g: z.number().positive().max(1_000_000),
-    purity: z.number().min(100).max(1000).transform(nearestPurity),
+    // Fehlt das Gewicht auf der Rechnung, darf das nicht die ganze Rechnung blockieren (z. B. „Gold Sovereign“ ohne Angaben)
+    weight_per_piece_g: z.number().positive().max(1_000_000).nullable().optional().catch(null),
+    purity: z.number().min(100).max(1000).transform(nearestPurity).nullable().optional().catch(null),
     line_total: z.number().finite().nullable().optional(),
+  }).transform((p) => {
+    if (p.weight_per_piece_g != null && p.purity != null) return { ...p, weight_per_piece_g: p.weight_per_piece_g, purity: p.purity, standard: false };
+    // Ohne Gewicht/Feingehalt: Feingewicht bekannter Münzen bzw. aus „1 oz“/„100 g“ im Namen
+    const fine = knownFineWeight(p.product);
+    if (fine != null) return { ...p, weight_per_piece_g: fine, purity: 1000, standard: true };
+    return { ...p, weight_per_piece_g: null, purity: null, standard: false };
   })).default([]).transform((a) => a.slice(0, 40)),
   notes: z.array(txt(200)).default([]).transform((a) => a.slice(0, 5)),
 });
@@ -62,8 +70,8 @@ const TOOL: Tool = {
             product: { type: 'string', description: 'Produkt kurz, z. B. „Maple Leaf 1 oz Silber 2021“' },
             form: { type: 'string', enum: ['bar', 'coin', 'jewelry', 'other'] },
             pieces: { type: 'integer', description: 'Anzahl Stück (bei Tube/Masterbox die Münzen zählen)' },
-            weight_per_piece_g: { type: 'number', description: 'FEINgewicht je Stück in Gramm, wenn angegeben (1 oz = 31,1035 g); sonst Rauhgewicht' },
-            purity: { type: 'number', description: 'Feingehalt in Promille, z. B. 999,9 → 999,9; 916,7 → 916,7. Ist oben schon FEINgewicht angegeben, dann 1000.' },
+            weight_per_piece_g: { type: ['number', 'null'], description: 'FEINgewicht je Stück in Gramm, wenn angegeben (1 oz = 31,1035 g); sonst Rauhgewicht; steht nirgends ein Gewicht, null' },
+            purity: { type: ['number', 'null'], description: 'Feingehalt in Promille, z. B. 999,9 → 999,9; 916,7 → 916,7. Ist oben schon FEINgewicht angegeben, dann 1000.' },
             line_total: { type: ['number', 'null'], description: 'Preis der Position gesamt (brutto)' },
           },
         },
@@ -166,11 +174,15 @@ const normNo = (v: string | null | undefined) => (v ?? '').toUpperCase().replace
 /** Positionen als Bestände speichern (oder bei schon vorhandener Rechnungsnummer nur den Beleg verknüpfen). */
 export async function saveInvoice(s: Session, documentId: string, a: InvoiceAnalysis): Promise<void> {
   await db(s).run(async (q) => {
-    const usable = a.is_metal_invoice ? a.positions.filter((p) => p.metal === 'gold' || p.metal === 'silver' || p.metal === 'platinum') : [];
-    const skipped = a.is_metal_invoice ? a.positions.length - usable.length : 0;
+    const metals = a.is_metal_invoice ? a.positions.filter((p) => p.metal === 'gold' || p.metal === 'silver' || p.metal === 'platinum') : [];
+    const usable = metals.flatMap((p) => (p.weight_per_piece_g != null && p.purity != null ? [{ ...p, weight_per_piece_g: p.weight_per_piece_g, purity: p.purity }] : []));
+    const noWeight = metals.filter((p) => p.weight_per_piece_g == null || p.purity == null);
+    const skipped = a.is_metal_invoice ? a.positions.length - metals.length : 0;
     const notes = [...a.notes];
     if (!a.is_metal_invoice) notes.unshift('Kein Edelmetall-Kauf erkannt – nichts übernommen.');
     if (skipped) notes.push(`${skipped} Position(en) Palladium/Sonstiges nicht übernommen (noch ohne Kurs).`);
+    for (const p of usable.filter((x) => x.standard)) notes.push(`${p.product}: kein Gewicht auf der Rechnung – Standard-Feingewicht ${p.weight_per_piece_g.toLocaleString('de-DE')} g je Stück angenommen.`);
+    if (noWeight.length) notes.push(`Ohne Gewicht nicht übernommen, bitte von Hand anlegen: ${noWeight.map((p) => p.product).join(', ')}.`);
     let linked = 0, created = 0;
     const no = normNo(a.invoice_no);
     const existing = no
@@ -183,11 +195,11 @@ export async function saveInvoice(s: Session, documentId: string, a: InvoiceAnal
       linked = existing.length + fromDoc.length;
       if (existing.length) notes.push('Bestände zu dieser Rechnungsnummer gab es schon – nur der Beleg wurde verknüpft.');
     } else {
-      const sumLines = usable.reduce((n, p) => n + (p.line_total ?? 0), 0);
+      const sumLines = a.positions.reduce((n, p) => n + (p.line_total ?? 0), 0);
       for (const p of usable) {
         // Kaufpreis je Position: Zeilenpreis; fehlt er, Gesamtbetrag anteilig nur bei genau einer Position
-        const price = p.line_total ?? (usable.length === 1 ? a.total ?? null : null);
-        const share = p.line_total != null && a.total != null && sumLines > 0 ? (p.line_total / sumLines) * a.total : price; // Versand anteilig
+        const price = p.line_total ?? (a.positions.length === 1 ? a.total ?? null : null);
+        const share = p.line_total != null && a.total != null && sumLines > 0 ? (p.line_total / sumLines) * a.total : price; // Versand anteilig (über alle Positionen, damit übersprungene nicht mitbezahlt werden)
         await q(`insert into gold_holdings (user_id, label, grams, purity, form, metal, pieces, purchase_total, purchase_currency, purchased_on, dealer, invoice_no, document_id)
             values (auth.uid(), $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12)`,
           [p.product.slice(0, 60), (p.pieces * p.weight_per_piece_g).toFixed(3), p.purity, p.form, p.metal, p.pieces,
