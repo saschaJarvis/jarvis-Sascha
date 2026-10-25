@@ -155,3 +155,24 @@ export async function newTaskAction(_: ActionState, fd: FormData): Promise<Actio
   revalidatePath('/', 'layout');
   redirect(`/aufgaben/${newId}`);
 }
+
+/** Abhaken/Wieder öffnen direkt aus dem Kalender (READY/IN_PROGRESS → CLOSED, CLOSED → READY). */
+export async function toggleDoneAction(id: string, version: number, done: boolean): Promise<{ error?: string }> {
+  const s = await requireUser();
+  if (!uuid.safeParse(id).success || !Number.isInteger(version)) return { error: 'Ungültige Anfrage.' };
+  try {
+    const task = await db(s).task(id);
+    if (!task) return { error: 'Aufgabe nicht gefunden.' };
+    const to: TaskStatus = done ? 'CLOSED' : 'READY';
+    const gate = canTransition(task.status, to, {
+      evidenceRequired: task.evidence_required, acceptedEvidenceCount: task.accepted_evidence, openDependencyCount: task.open_deps,
+    });
+    if (!gate.ok) return { error: gate.reason };
+    const rows = await db(s).run((q) => q('update tasks set status = $2 where id = $1 and version = $3 returning id', [id, to, version]));
+    if (rows.length === 0) return { error: 'Inzwischen geändert – bitte Seite neu laden.' };
+  } catch (e) {
+    return { error: friendlyDbError(e) };
+  }
+  revalidatePath('/', 'layout');
+  return {};
+}

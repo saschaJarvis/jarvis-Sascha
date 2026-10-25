@@ -1,6 +1,7 @@
 'use client';
 import Link from 'next/link';
-import { useRef, useState } from 'react';
+import { useRef, useState, useTransition } from 'react';
+import { toggleDoneAction } from '@/app/(app)/aufgaben/actions';
 
 import type { CalItem } from '@/lib/calendar';
 export type { CalItem };
@@ -56,8 +57,8 @@ export function WeekCalendar({ weeks, domainLabel, hasSources = true }: { weeks:
                   : d.isToday ? 'border-sea/50 text-ink' : 'border-line text-muted hover:border-sea/40'} ${d.isPast && !sel ? 'opacity-60' : ''}`}>
               <span className="mono text-[.7rem] font-semibold uppercase tracking-wider">{d.wd}</span>
               <span className="hud-num text-[.62rem]">{d.date.slice(0, 5)}</span>
-              <span className={`mono mt-0.5 min-w-5 px-1 text-[.6rem] ${d.items.length ? (hasOverdue ? 'bg-bad/20 text-bad' : 'bg-sea/15 text-sea') : 'text-muted/50'}`}>
-                {d.items.length || '·'}
+              <span className={`mono mt-0.5 min-w-5 px-1 text-[.6rem] ${d.items.some((x) => !x.done) ? (hasOverdue ? 'bg-bad/20 text-bad' : 'bg-sea/15 text-sea') : 'text-muted/50'}`}>
+                {d.items.filter((x) => !x.done).length || (d.items.length ? '✓' : '·')}
               </span>
               {d.isToday && <span className="absolute -top-px left-1/2 h-0.5 w-6 -translate-x-1/2 bg-sea" aria-hidden="true" />}
               {(d.holiday || d.observances.length > 0) && (
@@ -100,15 +101,18 @@ export function WeekCalendar({ weeks, domainLabel, hasSources = true }: { weeks:
                     </span>
                   </div>
                 ) : (
-                  <Link href={`/aufgaben/${t.id}`} className={`flex items-start gap-3 border-l-2 bg-card/40 px-3 py-2 hover:bg-sea-soft/40 ${t.overdue ? 'border-bad' : t.hard ? 'border-warn' : 'border-sea'}`}>
-                    <span className={`mono w-14 shrink-0 pt-0.5 text-[.72rem] ${t.overdue ? 'text-bad' : 'text-sea'}`}>{t.time ?? 'ganzt.'}</span>
-                    <span className="min-w-0 flex-1">
-                      <span className="block leading-snug">{t.title}</span>
-                      <span className="mono text-[.6rem] uppercase tracking-wider text-muted">
-                        ▪ Aufgabe · {domainLabel[t.domain] ?? t.domain}{t.hard ? ' · feste Frist' : ''}{t.overdue ? ' · überfällig' : ''}
+                  <div className={`flex items-stretch border-l-2 bg-card/40 ${t.done ? 'border-good/60 opacity-70' : t.overdue ? 'border-bad' : t.hard ? 'border-warn' : 'border-sea'}`}>
+                    <CheckBox id={t.id} version={t.version} done={!!t.done} title={t.title} />
+                    <Link href={`/aufgaben/${t.id}`} className="flex min-w-0 flex-1 items-start gap-3 py-2 pr-3 hover:bg-sea-soft/40">
+                      <span className={`mono w-12 shrink-0 pt-0.5 text-[.72rem] ${t.done ? 'text-muted' : t.overdue ? 'text-bad' : 'text-sea'}`}>{t.time ?? 'ganzt.'}</span>
+                      <span className="min-w-0 flex-1">
+                        <span className={`block leading-snug ${t.done ? 'text-muted line-through' : ''}`}>{t.title}</span>
+                        <span className="mono text-[.6rem] uppercase tracking-wider text-muted">
+                          {t.done ? '✓ erledigt' : <>▪ Aufgabe · {domainLabel[t.domain] ?? t.domain}{t.hard ? ' · feste Frist' : ''}{t.overdue ? ' · überfällig' : ''}</>}
+                        </span>
                       </span>
-                    </span>
-                  </Link>
+                    </Link>
+                  </div>
                 )}
               </li>
             ))}
@@ -124,5 +128,30 @@ export function WeekCalendar({ weeks, domainLabel, hasSources = true }: { weeks:
         </div>
       </div>
     </section>
+  );
+}
+
+/** Abhak-Kästchen: Tippen = erledigt, nochmal tippen = wieder offen. */
+function CheckBox({ id, version, done, title }: { id: string; version?: number; done: boolean; title: string }) {
+  const [pending, start] = useTransition();
+  const [optimistic, setOptimistic] = useState(done);
+  const [err, setErr] = useState<string | null>(null);
+  if (version == null) return <span className="w-3" />;
+  return (
+    <button type="button" disabled={pending}
+      aria-pressed={optimistic} aria-label={optimistic ? `„${title}“ wieder öffnen` : `„${title}“ abhaken`} title={err ?? undefined}
+      onClick={() => {
+        const next = !optimistic;
+        setOptimistic(next); setErr(null);
+        start(async () => {
+          const r = await toggleDoneAction(id, version, next);
+          if (r.error) { setOptimistic(!next); setErr(r.error); }
+        });
+      }}
+      className="flex w-11 shrink-0 items-center justify-center">
+      <span className={`flex h-5 w-5 items-center justify-center border text-[.8rem] transition ${optimistic ? 'border-good bg-good/20 text-good' : err ? 'border-bad' : 'border-sea/70 hover:bg-sea-soft'} ${pending ? 'pulse' : ''}`}>
+        {optimistic ? '✓' : ''}
+      </span>
+    </button>
   );
 }

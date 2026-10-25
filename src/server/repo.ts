@@ -78,6 +78,10 @@ export const db = (s: Session) => ({
   recentlyDone: () => withUser(s.claims, (q) => q<TaskRow>(
     `${TASK_SELECT} and t.status = 'CLOSED' and t.closed_at > now() - interval '7 days' order by t.closed_at desc limit 5`)),
 
+  /** Abgehakte Aufgaben mit Fälligkeit im Zeitraum – damit der Kalender sie durchgestrichen zeigt */
+  doneInRange: (from: Date, to: Date) => withUser(s.claims, (q) => q<TaskRow>(
+    `${TASK_SELECT} and t.status = 'CLOSED' and t.due_at between $1 and $2 order by t.due_at limit 200`, [from, to])),
+
   task: (id: string) => withUser(s.claims, async (q) => (await q<TaskRow>(`${TASK_SELECT} and t.id = $1`, [id]))[0] ?? null),
 
   taskDeps: (id: string) => withUser(s.claims, (q) => q<{ id: string; title: string; status: TaskStatus; direction: 'needs' | 'blocks' }>(

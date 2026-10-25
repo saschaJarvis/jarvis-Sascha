@@ -5,7 +5,7 @@
 import { holidaysBetween, type Holiday } from './holidays';
 import { observancesBetween, type Observance } from './special-days';
 
-export interface CalTask { id: string; title: string; due_at: Date | string | null; domain: string; due_is_hard: boolean }
+export interface CalTask { id: string; title: string; due_at: Date | string | null; domain: string; due_is_hard: boolean; status?: string; version?: number }
 export interface CalExternal { uid: string; title: string; start: Date; end: Date | null; allDay: boolean; dayFrom?: number; dayTo?: number; location: string | null; source: string }
 
 export interface CalItem {
@@ -19,6 +19,8 @@ export interface CalItem {
   hard: boolean;
   location: string | null;
   source: string | null;    // Kalendername bei Terminen
+  done?: boolean;           // Aufgabe abgehakt
+  version?: number;         // für Abhaken (optimistische Sperre)
 }
 
 const DAY = 86_400_000;
@@ -52,8 +54,9 @@ export function buildCalendar(tasks: readonly CalTask[], tz: string, now: Date, 
     if (!t.due_at) continue;
     const due = new Date(t.due_at);
     const time = timeFmt.format(due);
+    const done = t.status === 'CLOSED';
     add(dayNo(due, tz), { kind: 'task', id: t.id, title: t.title, time: time === '00:00' ? null : time, endTime: null, domain: t.domain,
-      overdue: due < now, hard: t.due_is_hard, location: null, source: null, sort: due.getTime() });
+      overdue: !done && due < now, hard: t.due_is_hard, location: null, source: null, done, version: t.version, sort: due.getTime() });
   }
   for (const e of events) {
     const base = { kind: 'event' as const, title: e.title, domain: 'calendar', overdue: false, hard: false, location: e.location, source: e.source };

@@ -4,6 +4,7 @@ import { loadExternalEvents } from '@/server/calendars';
 import { PageTitle, Section } from '@/components/ui';
 import { WeekCalendar } from '@/components/week-calendar';
 import { buildCalendar } from '@/lib/calendar';
+import { ensureBillTasks } from '@/server/bills';
 import { DOMAIN_LABEL } from '@/lib/labels';
 import { ConnectCalendarForm, ConnectSection } from './connect-form';
 import { removeCalendarAction } from './actions';
@@ -14,11 +15,13 @@ export default async function CalendarPage({ searchParams }: { searchParams: Pro
   const s = await requireUser();
   const { verbinden } = await searchParams;
   const now = new Date();
-  const [profile, open, ext] = await Promise.all([
-    db(s).profile(), db(s).openTasks(),
+  await ensureBillTasks(s, now);
+  const from = new Date(now.getTime() - 15 * 86_400_000), to = new Date(now.getTime() + 13 * 7 * 86_400_000);
+  const [profile, open, closed, ext] = await Promise.all([
+    db(s).profile(), db(s).openTasks(), db(s).doneInRange(from, to),
     loadExternalEvents(s, new Date(now.getTime() - 15 * 86_400_000), new Date(now.getTime() + 13 * 7 * 86_400_000)),
   ]);
-  const weeks = buildCalendar(open, profile.timezone, now, 2, 12, ext.events);
+  const weeks = buildCalendar([...open, ...closed], profile.timezone, now, 2, 12, ext.events);
   const none = ext.sources.length === 0;
 
   return (
