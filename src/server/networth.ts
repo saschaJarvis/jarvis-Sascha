@@ -32,8 +32,12 @@ export async function goldPrice(): Promise<GoldPrice | null> {
   return null;
 }
 
+export type MetalRowView = GoldRow & { aed: number | null; costEur: number | null };
+/** pieces = Summe der Stückzahlen (ohne Stückzahl zählt eine Position als 1); cost = Kaufpreise in EUR, soweit bekannt */
+export interface MetalBlock { aed: number; count: number; pieces: number; grams: number; price: GoldPrice | null; rows: MetalRowView[]; cost: { eur: number; valueEur: number; rows: number } | null }
+
 export interface AccountRow { id: string; name: string; institution: string | null; currency: string; kind: string; amount_minor: string | null; as_of: string | null }
-export interface GoldRow { id: string; label: string; grams: string; purity: number; form: string; metal: 'gold' | 'platinum' | 'silver' }
+export interface GoldRow { id: string; label: string; grams: string; purity: number; form: string; metal: 'gold' | 'platinum' | 'silver'; pieces: number | null; purchase_total: string | null; purchase_currency: string | null; purchased_on: string | null; dealer: string | null; invoice_no: string | null; document_id: string | null; version_id: string | null }
 export interface StockRow { id: string; symbol: string; name: string | null; isin: string | null; quantity: string; label: string; venue: string | null }
 
 export interface NetWorth {
@@ -48,9 +52,9 @@ export interface NetWorth {
     coins: Array<{ coin: PriceCoin; amount: number; aed: number; eur: number; priceEur: number; priceAed: number; changePct: number | null; changeAed: number | null; source: string }>;
     asOf: Date;
   };
-  gold: { aed: number; count: number; grams: number; price: GoldPrice | null; rows: Array<GoldRow & { aed: number | null }> };
-  platinum: { aed: number; count: number; grams: number; price: GoldPrice | null; rows: Array<GoldRow & { aed: number | null }> };
-  silver: { aed: number; count: number; grams: number; price: GoldPrice | null; rows: Array<GoldRow & { aed: number | null }> };
+  gold: MetalBlock;
+  platinum: MetalBlock;
+  silver: MetalBlock;
   stocks: {
     aed: number; count: number; error: boolean;
     change: { aed: number; eur: number | null; pct: number | null; complete: boolean } | null;
@@ -86,7 +90,9 @@ export async function loadNetWorth(s: Session): Promise<NetWorth> {
           from accounts a left join lateral (select amount_minor, as_of from balances where account_id = a.id order by as_of desc, created_at desc limit 1) b on true
           where a.deleted_at is null and not a.is_demo and a.kind <> 'crypto_wallet' order by a.created_at`),
       wallets: await q<{ chain: Coin; address: string }>(WALLETS_SQL),
-      gold: await q<GoldRow>(`select id, label, grams::text, purity, form, metal from gold_holdings where deleted_at is null order by created_at`),
+      gold: await q<GoldRow>(`select g.id, g.label, g.grams::text, g.purity, g.form, g.metal, g.pieces, g.purchase_total::text, g.purchase_currency, g.purchased_on::text, g.dealer, g.invoice_no, g.document_id,
+        (select v.id from document_versions v where v.document_id = g.document_id order by v.version_no desc limit 1) version_id
+      from gold_holdings g where g.deleted_at is null order by g.purchased_on nulls last, g.created_at`),
       stocks: await q<StockRow>(`select id, symbol, name, isin, quantity::text, label, venue from stock_holdings where deleted_at is null order by created_at`),
       manual: await q<ManualRow>(MANUAL_SQL),
     })),
@@ -177,12 +183,32 @@ export async function loadNetWorth(s: Session): Promise<NetWorth> {
       aed: crypto.aed, count: rows.wallets.length + rows.manual.length, holdings, error: crypto.missing > 0, coins, asOf: new Date(),
       change: changeItems.length ? { aed: ch.abs, eur: eurAed ? ch.abs / eurAed : null, pct: ch.pct, complete: ch.complete } : null,
     },
-    gold: { aed: gold.aed, count: goldOnly.length, grams: goldOnly.reduce((n, g) => n + Number(g.grams), 0), price: gp, rows: goldRows },
-    platinum: { aed: plat.aed, count: platOnly.length, grams: platOnly.reduce((n, g) => n + Number(g.grams), 0), price: pp, rows: platRows },
-    silver: { aed: silv.aed, count: silvOnly.length, grams: silvOnly.reduce((n, g) => n + Number(g.grams), 0), price: sp, rows: silvRows },
+    gold: await metalBlock(goldOnly, goldRows, gold.aed, gp, eurAed),
+    platinum: await metalBlock(platOnly, platRows, plat.aed, pp, eurAed),
+    silver: await metalBlock(silvOnly, silvRows, silv.aed, sp, eurAed),
     stocks: {
       aed: stocks.aed, count: rows.stocks.length, error: stocks.missing > 0, rows: stockRows,
       change: stockRows.some((r) => r.aed != null) ? { aed: stockCh.abs, eur: eurAed ? stockCh.abs / eurAed : null, pct: stockCh.pct, complete: stockCh.complete } : null,
     },
+  };
+}
+
+async function metalBlock(src: GoldRow[], rows: Array<GoldRow & { aed: number | null }>, aed: number, price: GoldPrice | null, eurAed: number | null): Promise<MetalBlock> {
+  const fx = new Map<string, number | null>();
+  const view: MetalRowView[] = [];
+  for (const r of rows) {
+    let costEur: number | null = null;
+    if (r.purchase_total != null) {
+      const cur = (r.purchase_currency ?? 'EUR').trim().toUpperCase();
+      if (!fx.has(cur)) fx.set(cur, cur === 'EUR' ? 1 : cur === 'AED' ? (eurAed ? 1 / eurAed : null) : await eurPer(cur));
+      const f = fx.get(cur);
+      costEur = f != null ? Number(r.purchase_total) * f : null;
+    }
+    view.push({ ...r, costEur });
+  }
+  const withCost = view.filter((r) => r.costEur != null && r.aed != null);
+  return {
+    aed, count: src.length, pieces: src.reduce((n, g) => n + (g.pieces ?? 1), 0), grams: src.reduce((n, g) => n + Number(g.grams), 0), price, rows: view,
+    cost: withCost.length && eurAed ? { eur: withCost.reduce((n, r) => n + r.costEur!, 0), valueEur: withCost.reduce((n, r) => n + r.aed! / eurAed, 0), rows: withCost.length } : null,
   };
 }

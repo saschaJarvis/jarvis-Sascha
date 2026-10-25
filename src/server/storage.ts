@@ -18,14 +18,14 @@ const MAX_BYTES = () => (usingSupabase() ? 4 : 20) * 1024 * 1024;
 const root = () => path.resolve(/* turbopackIgnore: true */ process.cwd(), process.env.STORAGE_DIR ?? '.storage');
 
 export const FOLDERS = ['identity', 'housing', 'office', 'storage', 'business', 'taxes', 'banks', 'crypto', 'insurance',
-  'subscriptions', 'shipping', 'customs', 'visa', 'uae_property', 'utilities', 'healthcare', 'vehicles', 'travel', 'legal', 'other'] as const;
+  'subscriptions', 'shipping', 'customs', 'visa', 'uae_property', 'utilities', 'healthcare', 'vehicles', 'travel', 'legal', 'metals', 'other'] as const;
 export type Folder = (typeof FOLDERS)[number];
 
 export const FOLDER_LABEL: Record<Folder, string> = {
   identity: 'Ausweise', housing: 'Wohnung', office: 'Büro', storage: 'Lager', business: 'Firma', taxes: 'Steuern',
   banks: 'Banken', crypto: 'Krypto', insurance: 'Versicherungen', subscriptions: 'Abos', shipping: 'Versand/Umzug',
   customs: 'Zoll', visa: 'Visum', uae_property: 'Dubai-Wohnung', utilities: 'Strom/Wasser', healthcare: 'Gesundheit',
-  vehicles: 'Fahrzeuge', travel: 'Reisen', legal: 'Rechtliches', other: 'Sonstiges',
+  vehicles: 'Fahrzeuge', travel: 'Reisen', legal: 'Rechtliches', metals: 'Edelmetalle', other: 'Sonstiges',
 };
 
 export function sniffMime(buf: Buffer, filename: string): { mime: string; ext: string } | null {

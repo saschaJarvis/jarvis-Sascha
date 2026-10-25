@@ -19,6 +19,8 @@ import { descriptorOf, parseAccountKey } from '@/lib/crypto/xpub';
 import { blockbookLoad, detectScheme } from '@/server/blockbook';
 import { loadEthAccount, loadVetAccount, MANUAL_SYMBOLS } from '@/server/wallets';
 import { resolveSymbol } from '@/server/markets';
+import { storeUpload } from '@/server/storage';
+import { kickMetalInvoices } from '@/server/metal-invoices';
 import { CURRENCIES, parseAmount } from '@/lib/domain/networth';
 
 export type WalletState = { error?: string; ok?: string } | undefined;
@@ -222,9 +224,13 @@ export async function addGoldAction(_: WalletState, fd: FormData): Promise<Walle
   if (count == null || count <= 0 || count > 100000 || Math.round(count) !== count) return { error: 'Anzahl bitte als ganze Zahl, z. B. 20.' };
   if (![1000, 999, 995, 958, 950, 925, 916, 900, 875, 835, 800, 750, 625, 585, 333].includes(purity)) return { error: 'Ungültiger Feingehalt.' };
   if (!['bar', 'coin', 'jewelry', 'other'].includes(form)) return { error: 'Ungültige Form.' };
+  const cost = parseAmount(String(fd.get('cost') ?? ''));
+  const bought = String(fd.get('bought') ?? '').trim();
+  const dealer = String(fd.get('dealer') ?? '').trim().slice(0, 80) || null;
+  if (bought && !/^\d{4}-\d{2}-\d{2}$/.test(bought)) return { error: 'Kaufdatum bitte als Datum.' };
   const grams = (unit === 'oz' ? qty * 31.1034768 : unit === 'tola' ? qty * 11.6638038 : unit === 'kg' ? qty * 1000 : qty) * count;
   try {
-    await db(s).run((q) => q('insert into gold_holdings (user_id, label, grams, purity, form, metal) values (auth.uid(), $1, $2, $3, $4, $5)', [label, grams.toFixed(3), purity, form, metal]));
+    await db(s).run((q) => q('insert into gold_holdings (user_id, label, grams, purity, form, metal, pieces, purchase_total, purchase_currency, purchased_on, dealer) values (auth.uid(), $1, $2, $3, $4, $5, $6, $7, $8, $9, $10)', [label, grams.toFixed(3), purity, form, metal, count, cost != null && cost > 0 ? cost.toFixed(2) : null, 'EUR', bought || null, dealer]));
   } catch (e) {
     return { error: friendlyDbError(e) };
   }
@@ -306,4 +312,31 @@ export async function removeStockAction(fd: FormData): Promise<void> {
   const id = z.string().uuid().parse(fd.get('id'));
   await db(s).run((q) => q('update stock_holdings set deleted_at = now() where id = $1 and deleted_at is null', [id]));
   revalidatePath('/', 'layout');
+}
+
+// ---------- Edelmetall-Rechnungen ----------
+export async function uploadMetalInvoiceAction(_: WalletState, fd: FormData): Promise<WalletState> {
+  const s = await requireUser();
+  const files = fd.getAll('file').filter((f): f is File => f instanceof File && f.size > 0).slice(0, 10);
+  if (!files.length) return { error: 'Bitte mindestens eine Rechnung auswählen (PDF oder Foto).' };
+  let ok = 0; const errs: string[] = []; let dup = 0;
+  for (const f of files) {
+    try {
+      const r = await storeUpload(s, f, { title: `Edelmetall-Rechnung ${f.name.replace(/\.[a-z0-9]+$/i, '')}`.slice(0, 200), folder: 'metals', tags: ['edelmetall'] });
+      if (r.scan === 'infected') errs.push(`${f.name}: gesperrt`);
+      else { ok++; if (r.duplicateOf) dup++; }
+    } catch (e) { errs.push(`${f.name}: ${e instanceof Error && e.message.startsWith('Datei') ? e.message : 'nicht gespeichert'}`); }
+  }
+  if (ok) await kickMetalInvoices(s).catch((e) => console.error('[metal-invoice] kick', e));
+  revalidatePath('/', 'layout');
+  if (!ok) return { error: errs.join(' · ') };
+  return { ok: `${ok} Rechnung${ok === 1 ? '' : 'en'} gespeichert – Jarvis liest sie jetzt aus (dauert etwa eine Minute, Seite aktualisiert sich).${dup ? ` ${dup} davon lag schon in der Ablage.` : ''}${errs.length ? ` Nicht geklappt: ${errs.join(' · ')}` : ''}` };
+}
+
+export async function retryMetalInvoiceAction(fd: FormData): Promise<void> {
+  const s = await requireUser();
+  const id = z.string().uuid().parse(fd.get('document_id'));
+  await db(s).run((q) => q(`update metal_invoices set status = 'pending', attempts = 0, error = null where document_id = $1 and status = 'error'`, [id]));
+  await kickMetalInvoices(s).catch(() => {});
+  revalidatePath('/leben/finanzen');
 }

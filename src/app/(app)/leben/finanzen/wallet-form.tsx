@@ -1,6 +1,6 @@
 'use client';
 import { useActionState, useEffect, useRef } from 'react';
-import { addAccountAction, addGoldAction, addManualCryptoAction, addStockAction, addWalletAction, setBalanceAction, setManualAmountAction, setStockQuantityAction } from './actions';
+import { uploadMetalInvoiceAction, addAccountAction, addGoldAction, addManualCryptoAction, addStockAction, addWalletAction, setBalanceAction, setManualAmountAction, setStockQuantityAction } from './actions';
 import { ErrorNote, OkNote, Submit } from '@/components/form';
 
 export function AddWalletForm() {
@@ -119,6 +119,14 @@ export function AddGoldForm({ metal = 'gold' }: { metal?: 'gold' | 'platinum' | 
           <select id={`${metal}-g-form`} name="form" className="field" defaultValue={silver ? 'coin' : 'bar'}><option value="bar">Barren</option><option value="coin">Münze</option><option value="jewelry">Schmuck</option><option value="other">Sonstiges</option></select>
         </div>
       </div>
+      <details className="text-sm">
+        <summary className="cursor-pointer text-muted">Kaufdaten (optional)</summary>
+        <div className="mt-2 grid grid-cols-2 gap-2">
+          <div><label className="label" htmlFor={`${metal}-g-cost`}>Kaufpreis gesamt (€)</label><input id={`${metal}-g-cost`} name="cost" inputMode="decimal" className="field mono" placeholder="z. B. 1.250,00" /></div>
+          <div><label className="label" htmlFor={`${metal}-g-bought`}>Kaufdatum</label><input id={`${metal}-g-bought`} name="bought" type="date" className="field" /></div>
+          <div className="col-span-2"><label className="label" htmlFor={`${metal}-g-dealer`}>Händler</label><input id={`${metal}-g-dealer`} name="dealer" maxLength={80} className="field" placeholder="z. B. pro aurum, Degussa" /></div>
+        </div>
+      </details>
       <Submit>{metal === 'platinum' ? 'Platin hinzufügen' : silver ? 'Silber hinzufügen' : 'Gold hinzufügen'}</Submit>
       <ErrorNote error={state?.error} /><OkNote message={state?.ok} />
     </form>
@@ -191,6 +199,21 @@ export function StockQtyForm({ id, label }: { id: string; label: string }) {
       <input id={`sq-${id}`} name="qty" required inputMode="decimal" className="field min-h-9 flex-1 py-1" placeholder="neue Stückzahl" />
       <button className="btn btn-secondary min-h-9 px-3 text-[.66rem]">Speichern</button>
       <ErrorNote error={state?.error} /><OkNote message={state?.ok} />
+    </form>
+  );
+}
+
+export function MetalInvoiceUpload() {
+  const [state, action] = useActionState(uploadMetalInvoiceAction, undefined);
+  const ref = useRef<HTMLFormElement>(null);
+  useEffect(() => { if (state?.ok) ref.current?.reset(); }, [state]);
+  return (
+    <form ref={ref} action={action} className="grid gap-2">
+      <label className="label" htmlFor="mi-file">Rechnungen (PDF oder Foto, bis 10 auf einmal – zusammen max. 4 MB, sonst in mehreren Schritten)</label>
+      <input id="mi-file" name="file" type="file" multiple required accept="application/pdf,image/jpeg,image/png" className="field py-2 text-sm" />
+      <Submit>Hochladen und auslesen</Submit>
+      <ErrorNote error={state?.error} /><OkNote message={state?.ok} />
+      <p className="text-xs text-muted">Jarvis liest Metall, Stückzahl, Gewicht, Feingehalt, Preis, Datum und Händler aus und legt die Positionen an. Gibt es die Rechnungsnummer schon, wird nur der Beleg verknüpft – nichts doppelt.</p>
     </form>
   );
 }

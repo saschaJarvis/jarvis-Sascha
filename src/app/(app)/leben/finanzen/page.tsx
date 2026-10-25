@@ -4,15 +4,16 @@ import { coinPrices, loadAdaAccount, loadAlgoAccount, loadBtcAccount, loadEthAcc
 import { AED_PER_USD } from '@/lib/domain/networth';
 import { PageTitle, Section } from '@/components/ui';
 import { timeAgo } from '@/lib/news';
-import { AddAccountForm, AddGoldForm, AddManualForm, AddStockForm, AddWalletForm, BalanceForm, ManualAmountForm, StockQtyForm } from './wallet-form';
+import { AddAccountForm, AddGoldForm, AddManualForm, AddStockForm, AddWalletForm, BalanceForm, ManualAmountForm, MetalInvoiceUpload, StockQtyForm } from './wallet-form';
 import { ConnectSection } from '../../kalender/connect-form';
-import { removeAccountAction, removeGoldAction, removeManualAction, removeStockAction, removeWalletAction } from './actions';
+import { removeAccountAction, removeGoldAction, removeManualAction, removeStockAction, removeWalletAction, retryMetalInvoiceAction } from './actions';
 import { loadNetWorth, type NetWorth } from '@/server/networth';
 import { CryptoChange, NetWorthCard } from '@/components/net-worth';
 import { AutoRefresh } from '@/components/auto-refresh';
 import { isDescriptor, keyOfDescriptor } from '@/lib/crypto/xpub';
 import { StatementsSection } from '@/components/statements';
 import { kickStatements, loadStatements } from '@/server/statements';
+import { kickMetalInvoices, loadMetalInvoices, type MetalInvoiceRow } from '@/server/metal-invoices';
 import { claudeAvailable } from '@/server/claude';
 
 const KIND: Record<string, string> = { checking: 'Girokonto', savings: 'Sparkonto', deposit: 'Festgeld', credit_card: 'Kreditkarte', crypto_exchange: 'Krypto-Börse', other: 'Sonstiges', loan: 'Kredit' };
@@ -28,6 +29,7 @@ export default async function FinancePage() {
   const s = await requireUser();
   // Offene Kontoauszüge im Hintergrund auswerten (Ergebnis erscheint beim nächsten Auto-Refresh)
   await kickStatements(s).catch((e) => console.error('[statement] kick', e));
+  await kickMetalInvoices(s).catch((e) => console.error('[metal-invoice] kick', e));
   const [wallets, manual] = await db(s).run(async (q) => [
     await q<{ id: string; chain: Coin; address: string; label: string }>(WALLETS_SQL),
     await q<ManualRow>(MANUAL_SQL),
@@ -37,7 +39,7 @@ export default async function FinancePage() {
     coinPrices([...new Set<PriceCoin>([...wallets.map((w) => w.chain), ...(wallets.some((w) => w.chain === 'eth') ? ['qnt' as const, 'fet' as const, 'link' as const, 'gala' as const] : []), ...(wallets.some((w) => w.chain === 'sol') ? ['render' as const] : []), ...manual.map((m) => MANUAL_SYMBOLS[m.symbol]).filter(Boolean)])]),
     loadNetWorth(s),
   ]);
-  const statements = await loadStatements(s);
+  const [statements, invoices] = await Promise.all([loadStatements(s), loadMetalInvoices(s)]);
   const EXPLORER: Record<Coin, (a: string) => string> = { xrp: (a) => `https://livenet.xrpl.org/accounts/${a}`, eth: (a) => `https://etherscan.io/address/${a}`, btc: (a) => (isDescriptor(a) ? `https://btc1.trezor.io/xpub/${encodeURIComponent(a)}` : `https://mempool.space/address/${a}`), ada: (a) => `https://cardanoscan.io/address/${a}`, algo: (a) => `https://allo.info/account/${a}`, zec: (a) => (isDescriptor(a) ? `https://blockbook.zec.zelcore.io/xpub/${encodeURIComponent(a)}` : `https://blockchair.com/zcash/address/${a}`), atom: (a) => `https://www.mintscan.io/cosmos/address/${a}`, xlm: (a) => `https://stellar.expert/explorer/public/account/${a}`, dot: (a) => `https://assethub-polkadot.subscan.io/account/${a}`, vet: (a) => `https://vechainstats.com/account/${a}`, sol: (a) => `https://solscan.io/account/${a}`, ltc: (a) => (isDescriptor(a) ? `https://litecoinblockexplorer.net/xpub/${encodeURIComponent(a)}` : `https://litecoinspace.org/address/${a}`) };
   const now = new Date();
 
@@ -80,6 +82,7 @@ export default async function FinancePage() {
       <MetalSection title="Gold" metal="gold" data={nw.gold} eurAed={nw.eurAed} />
       <MetalSection title="Silber" metal="silver" data={nw.silver} eurAed={nw.eurAed} />
       <MetalSection title="Platin" metal="platinum" data={nw.platinum} eurAed={nw.eurAed} />
+      <InvoicesSection invoices={invoices} />
 
       <Section title="Aktien & ETFs" aside={<span className="mono text-xs text-muted">{nw.stocks.count} Posten</span>}>
         {nw.stocks.count > 0 && (
@@ -385,26 +388,32 @@ export default async function FinancePage() {
 const PURITY_TXT: Record<string, Record<number, string>> = { gold: { 999: '999,9' }, platinum: { 999: '999,5' }, silver: {} };
 
 function MetalSection({ title, metal, data, eurAed }: { title: string; metal: 'gold' | 'silver' | 'platinum'; data: NetWorth['gold']; eurAed: number | null }) {
+  const gain = data.cost ? data.cost.valueEur - data.cost.eur : null;
   const p = data.price;
   const eurOz = p?.eurPerOz ?? (p && eurAed ? (p.usdPerOz * AED_PER_USD) / eurAed : null);
   const oz = data.grams / 31.1034768;
   return (
     <Section title={title} aside={p ? <span className="mono text-xs text-muted">1 oz = {eurOz != null ? `${nf(eurOz, eurOz < 100 ? 2 : 0)} € · ` : ''}{nf(p.usdPerOz, p.usdPerOz < 100 ? 2 : 0)} USD</span> : null}>
       {data.count > 0 && (
-        <p className="mb-3 text-sm"><span className="text-2xl font-bold">{nf(data.aed, 0)} AED</span>{eurAed && <span className="text-muted"> ≈ {nf(data.aed / eurAed, 0)} € · {nf(oz, oz < 10 ? 3 : 1)} oz ({nf(data.grams, 1)} g)</span>}</p>
+        <p className="mb-3 text-sm"><span className="text-2xl font-bold">{nf(data.aed, 0)} AED</span>{eurAed && <span className="text-muted"> ≈ {nf(data.aed / eurAed, 0)} € · {data.pieces} Stück · {nf(oz, oz < 10 ? 3 : 1)} oz ({nf(data.grams, 1)} g)</span>}</p>
+      )}
+      {data.cost && gain != null && (
+        <p className="mb-3 text-sm">Gekauft für <b>{nf(data.cost.eur, 0)} €</b>{data.cost.rows < data.count ? ` (${data.cost.rows} von ${data.count} Posten mit Kaufpreis)` : ''} · heute {nf(data.cost.valueEur, 0)} € · <span className={gain >= 0 ? 'text-good' : 'text-bad'}>{gain >= 0 ? '+' : '−'}{nf(Math.abs(gain), 0)} € ({gain >= 0 ? '+' : '−'}{nf(Math.abs(gain / data.cost.eur) * 100, 1)} %)</span></p>
       )}
       <ul className="grid gap-3">
         {data.rows.map((g) => (
           <li key={g.id} className="card flex items-start justify-between gap-3">
             <div className="min-w-0">
               <p className="font-semibold">{g.label}</p>
-              <p className="text-xs text-muted">{nf(Number(g.grams), Number(g.grams) % 1 ? 2 : 0)} g · {PURITY_TXT[metal][g.purity] ?? g.purity} · {FORM[g.form] ?? g.form}</p>
+              <p className="text-xs text-muted">{g.pieces && g.pieces > 1 ? `${g.pieces} Stk · ` : ''}{nf(Number(g.grams), Number(g.grams) % 1 ? 2 : 0)} g · {g.purity === 1000 ? 'Feingewicht' : PURITY_TXT[metal][g.purity] ?? g.purity} · {FORM[g.form] ?? g.form}</p>
+              {(g.purchase_total || g.dealer || g.purchased_on) && <p className="text-xs text-muted">Kauf{g.purchased_on ? ` ${new Date(`${g.purchased_on}T12:00:00Z`).toLocaleDateString('de-DE')}` : ''}{g.dealer ? ` · ${g.dealer}` : ''}{g.invoice_no ? ` · Rg. ${g.invoice_no}` : ''}{g.purchase_total ? ` · ${nf(Number(g.purchase_total), 2)} ${g.purchase_currency === 'EUR' || !g.purchase_currency ? '€' : g.purchase_currency}` : ''}{g.version_id && <> · <a href={`/api/datei/${g.version_id}`} className="underline">Beleg</a></>}</p>}
               <form action={removeGoldAction} className="mt-1"><input type="hidden" name="id" value={g.id} /><button className="text-xs text-muted underline">Entfernen</button></form>
             </div>
             <div className="text-right">
               {g.aed == null ? <p className="text-sm text-muted">Preis fehlt</p> : <>
                 <p className="text-lg font-bold">{nf(g.aed, 0)} AED</p>
                 {eurAed && <p className="text-sm text-muted">≈ {nf(g.aed / eurAed, 0)} €</p>}
+                {g.costEur != null && eurAed && (() => { const d = g.aed! / eurAed - g.costEur; return <p className={`text-xs ${d >= 0 ? 'text-good' : 'text-bad'}`}>{d >= 0 ? '+' : '−'}{nf(Math.abs(d), 0)} € ({d >= 0 ? '+' : '−'}{nf(Math.abs(d / g.costEur) * 100, 0)} %)</p>; })()}
               </>}
             </div>
           </li>
@@ -417,5 +426,39 @@ function MetalSection({ title, metal, data, eurAed }: { title: string; metal: 'g
         </ConnectSection>
       </div>
     </Section>
+  );
+}
+
+function InvoicesSection({ invoices }: { invoices: MetalInvoiceRow[] }) {
+  const busy = invoices.some((i) => i.status === 'processing' || i.status === 'pending');
+  return (
+    <div id="edelmetall-rechnungen" className="scroll-mt-20">
+      <Section title="Edelmetall-Rechnungen" aside={<span className="mono text-xs text-muted">{invoices.length} Belege{busy ? ' · wird gelesen…' : ''}</span>}>
+        {invoices.length > 0 && (
+          <ul className="mb-3 grid gap-2">
+            {invoices.map((i) => (
+              <li key={i.id} className="card grid gap-1 text-sm">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="truncate font-semibold">{i.version_id ? <a href={`/api/datei/${i.version_id}`} className="underline">{i.dealer ?? i.title}</a> : (i.dealer ?? i.title)}</p>
+                    <p className="text-xs text-muted">{i.invoice_date ? new Date(`${i.invoice_date}T12:00:00Z`).toLocaleDateString('de-DE') : '—'}{i.invoice_no ? ` · Rg. ${i.invoice_no}` : ''}{i.positions != null ? ` · ${i.positions} Position${i.positions === 1 ? '' : 'en'}` : ''}</p>
+                  </div>
+                  <div className="text-right">
+                    {i.status === 'done' && i.total != null && <p className="font-semibold">{nf(Number(i.total), 2)} {i.currency === 'EUR' || !i.currency ? '€' : i.currency}</p>}
+                    {i.status === 'processing' || i.status === 'pending' ? <p className="text-xs text-muted">wird gelesen…</p> : null}
+                    {i.status === 'error' && <form action={retryMetalInvoiceAction}><input type="hidden" name="document_id" value={i.document_id} /><button className="text-xs text-warn underline">Fehler – erneut versuchen</button></form>}
+                  </div>
+                </div>
+                {i.status === 'error' && i.error && <p className="text-xs text-warn">{i.error}</p>}
+                {(i.analysis?.notes ?? []).map((n, k) => <p key={k} className="text-xs text-muted">• {n}</p>)}
+              </li>
+            ))}
+          </ul>
+        )}
+        <ConnectSection initialOpen={invoices.length === 0} title="+ Rechnungen hochladen">
+          <div className="mt-3"><MetalInvoiceUpload /></div>
+        </ConnectSection>
+      </Section>
+    </div>
   );
 }
