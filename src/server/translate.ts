@@ -5,7 +5,7 @@ import { claudeAvailable, translateTexts } from './claude';
 
 /**
  * Übersetzer für öffentliche Nachrichtentexte ins Deutsche.
- * Anbieter: DeepL (wenn DEEPL_API_KEY gesetzt) → sonst Claude (ANTHROPIC_API_KEY) → sonst keine Übersetzung.
+ * Anbieter: DeepL (wenn DEEPL_API_KEY gesetzt), bei Ausfall automatisch Claude; ohne DeepL nur Claude; ohne beide keine Übersetzung.
  * Ergebnisse werden in app.translations gespeichert (jede Schlagzeile nur einmal übersetzen).
  */
 export type Provider = 'deepl' | 'claude' | 'test';
@@ -48,14 +48,24 @@ export async function toGerman(texts: string[], opts: { translateMissing: boolea
   for (let i = 0; i < missing.length; i += 40) {
     const chunk = missing.slice(i, i + 40);
     try {
-      const out = provider === 'deepl' ? await deepl(chunk) : await translateTexts(chunk);
+      // DeepL zuerst; fällt DeepL aus (z. B. Monatskontingent erschöpft), springt Claude ein
+      let used: Provider = provider;
+      let out: string[];
+      if (provider === 'deepl') {
+        try { out = await deepl(chunk); }
+        catch (e) {
+          if (!claudeAvailable()) throw e;
+          console.warn('[übersetzen] DeepL nicht verfügbar, nutze Claude:', (e as Error).message);
+          out = await translateTexts(chunk); used = 'claude';
+        }
+      } else out = await translateTexts(chunk);
       const vals = chunk.map((src, k) => [hash(src), src, out[k]] as const).filter(([, , de]) => de && de.length <= 4000);
       vals.forEach(([, src, de]) => result.set(src, de));
       if (vals.length) {
         await withService((q) => q(
           `insert into app.translations (src_hash, source_text, translated, provider)
            select * from unnest($1::text[], $2::text[], $3::text[], $4::text[]) on conflict (src_hash) do nothing`,
-          [vals.map((v) => v[0]), vals.map((v) => v[1]), vals.map((v) => v[2]), vals.map(() => provider)]), 'owner');
+          [vals.map((v) => v[0]), vals.map((v) => v[1]), vals.map((v) => v[2]), vals.map(() => used)]), 'owner');
       }
     } catch (e) {
       console.error('[übersetzen]', (e as Error).message);
