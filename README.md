@@ -2,7 +2,7 @@
 
 Persönliches Betriebssystem für Sascha: Umzug Mainz → Dubai als erstes Projekt, danach dauerhafter „Chief of Staff" für Fristen, Rechnungen, Verträge, Dokumente und Alltag. Deutsch zuerst, mobil zuerst, **eine** nächste Handlung statt Listenflut. Jarvis bereitet vor – Sascha gibt frei.
 
-> **Stand 24.10.2026 (Abend):** App läuft lokal auf dem iPhone-Viewport – Anmeldung mit Authenticator, Einrichtung, Heute-Screen, Aufgaben mit Nachweisen, Dokumente, Beispiel-Kündigung von Anfang bis Ende. Supabase ist eingerichtet; zum Online-Gang fehlt nur noch das Vercel-Projekt (siehe `docs/DEPLOYMENT.md`).
+> **Stand 25.10.2026:** Live unter https://jarvis-sascha.vercel.app (Vercel dub1 + Supabase EU). Saschas Konto mit Authenticator steht, Registrierung geschlossen. Neues Kommandobrücken-Design (PC: 3 Spalten mit Kern; iPhone: gestapelt) – siehe `docs/screens/0-bruecke-pc.png`.
 
 ## Schnellstart (lokal)
 Voraussetzungen: Node ≥ 22, PostgreSQL 16.
@@ -52,6 +52,7 @@ Legende: **TESTED** = gebaut und automatisch getestet · **IMPLEMENTED** = gebau
 | Aufgaben | Schnellerfassung Deutsch („nächste Woche die Bank anrufen") | TESTED (Logik) |
 | Aufgaben | Heute-Screen (1 + 2), Detailansicht (WAS/WARUM/BIS WANN/SCHRITT/NACHWEIS/VERLAUF), Später, Prio-Override, „Zu viel?“-Modus, Bottom-Nav | TESTED (E2E) |
 | Aufgaben | Einrichtung in 4 Mini-Schritten mit Fortschritt | TESTED (E2E) |
+| Oberfläche | Kommandobrücke (HUD): Kern mit Kennzahlen, Panels Heute/Aufgaben/Im Kopf/Geld/Dubai/Verträge/System, Wochenleiste, Lagebericht, DXB/DE-Uhr, Wetter (Open-Meteo), EUR→AED (EZB × Bindung 3,6725) | TESTED (E2E, iPhone + PC-Screenshot) |
 | Aufgaben | Eingang: Prüfschlange für erkannte Aufgaben | IMPLEMENTED |
 | Assistent | Feste Fragen („Was muss ich heute machen?“, „Was vergesse ich?“) aus eigenen Daten | IMPLEMENTED |
 | Dokumente | Schema, Ordner, Zustände, Versionen, Dubletten-Hash, MIME-Allowlist | TESTED |

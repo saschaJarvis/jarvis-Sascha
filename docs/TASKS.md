@@ -15,8 +15,10 @@
 
 ## Als Nächstes
 - [x] Supabase-Projekt angelegt, Migrationen 0001–0007 live, Supabase Auth + Storage angebunden
-- [ ] (Sascha) Vercel-Projekt + DATABASE_URL + Site URL in Supabase (docs/DEPLOYMENT.md)
-- [ ] Nach Saschas Registrierung: Registrierung schließen
+- [x] Vercel-Projekt live (Supabase-Integration), Saschas Konto + Authenticator, Registrierung in der App geschlossen
+- [ ] (Sascha) In Supabase „Allow new users to sign up“ ausschalten
+- [x] Kommandobrücken-Design (25.10.)
+- [ ] Claude im Jarvis-Reiter (wartet auf ANTHROPIC_API_KEY in Vercel)
 - [ ] Erinnerungs-Worker (Cron) + Resend (nur an dich selbst)
 - [ ] Finanz-Cockpit-Ansicht + Kontoauszug-Import in der App
 - [ ] Echter Virenscanner (ClamAV-Worker)
