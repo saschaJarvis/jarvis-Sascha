@@ -5,7 +5,9 @@ import { SATS_PER_BTC } from '@/lib/crypto/btc';
 import { ZAT_PER_ZEC } from '@/lib/crypto/zec';
 import { UATOM_PER_ATOM } from '@/lib/crypto/atom';
 import { XLM_STABLES } from '@/lib/crypto/xlm';
-import { LITOSHI_PER_LTC, isLtcDescriptor } from '@/lib/crypto/ltc';
+import { LITOSHI_PER_LTC } from '@/lib/crypto/ltc';
+import { isDescriptor } from '@/lib/crypto/xpub';
+import { blockbookLoad, type BbAccount } from './blockbook';
 import { LOVELACE_PER_ADA, stakeAddressOf } from '@/lib/crypto/ada';
 import { ALGO_STABLES, MICRO_PER_ALGO } from '@/lib/crypto/algo';
 import { priceAgo, relChange } from '@/lib/domain/change';
@@ -225,13 +227,23 @@ export async function loadEthAccount(address: string): Promise<EthAccount> {
 const BTC_APIS = ['https://mempool.space/api', 'https://blockstream.info/api'];
 
 export interface BtcMove { txid: string; date: Date | null; btc: number; confirmed: boolean }
-export interface BtcAccount { address: string; btc: number; pendingBtc: number; txCount: number; moves: BtcMove[]; error?: string }
+/** Ganzes Konto (Kontoschlüssel): alle Empfangs- und Wechselgeld-Adressen */
+export interface WholeInfo { whole?: boolean; usedAddresses?: number; withBalance?: number; source?: string }
+export interface BtcAccount extends WholeInfo { address: string; btc: number; pendingBtc: number; txCount: number; moves: BtcMove[]; error?: string }
+const wholeInfo = (a: BbAccount): WholeInfo => ({ whole: a.whole, usedAddresses: a.usedAddresses, withBalance: a.withBalance, source: a.source });
 
 interface EsploraAddr { chain_stats: { funded_txo_sum: number; spent_txo_sum: number; tx_count: number }; mempool_stats: { funded_txo_sum: number; spent_txo_sum: number } }
 interface EsploraTx { txid: string; status: { confirmed: boolean; block_time?: number }; vin: Array<{ prevout?: { scriptpubkey_address?: string; value: number } }>; vout: Array<{ scriptpubkey_address?: string; value: number }> }
 
 export async function loadBtcAccount(address: string): Promise<BtcAccount> {
   if (fake()) return { address, btc: 0.25, pendingBtc: 0, txCount: 3, moves: [{ txid: 'TESTBTC', date: new Date(Date.now() - 3 * 86_400_000), btc: 0.25, confirmed: true }] };
+  const fromBb = async (): Promise<BtcAccount> => {
+    const a = await blockbookLoad('btc', address);
+    return { address, btc: a.balance, pendingBtc: a.pending, txCount: a.txCount, moves: a.moves.map((m) => ({ txid: m.txid, date: m.date, btc: m.amount, confirmed: m.confirmed })), ...wholeInfo(a) };
+  };
+  if (isDescriptor(address)) {
+    try { return await fromBb(); } catch (e) { console.error('[btc] konto', (e as Error).message); return { address, btc: NaN, pendingBtc: 0, txCount: 0, moves: [], whole: true, error: 'Bitcoin-Konto gerade nicht abrufbar.' }; }
+  }
   for (const base of BTC_APIS) {
     try {
       const [ar, tr] = await Promise.all([
@@ -254,6 +266,7 @@ export async function loadBtcAccount(address: string): Promise<BtcAccount> {
       };
     } catch (e) { console.error('[btc]', base, (e as Error).message); }
   }
+  try { return await fromBb(); } catch (e) { console.error('[btc] blockbook', (e as Error).message); }
   return { address, btc: NaN, pendingBtc: 0, txCount: 0, moves: [], error: 'Bitcoin-Netz gerade nicht erreichbar.' };
 }
 
@@ -315,13 +328,9 @@ export async function loadAlgoAccount(address: string): Promise<AlgoAccount> {
 
 // ---------- Zcash (nur transparente Adressen t1/t3) ----------
 export interface ZecMove { txid: string; date: Date | null; zec: number; confirmed: boolean }
-export interface ZecAccount { address: string; zec: number; pendingZec: number; txCount: number; moves: ZecMove[]; source?: string; error?: string }
+export interface ZecAccount extends WholeInfo { address: string; zec: number; pendingZec: number; txCount: number; moves: ZecMove[]; error?: string }
 
 const UA = { 'user-agent': 'Mozilla/5.0 (Jarvis read-only)', accept: 'application/json' };
-// Blockbook-Instanzen (Trezor, Guarda) – gleiche API wie Ledger/Trezor-Wallets intern nutzen
-const ZEC_BLOCKBOOK = ['https://zec1.trezor.io', 'https://zec2.trezor.io', 'https://zecbook.guarda.co'];
-
-interface BlockbookAddr { balance?: string; unconfirmedBalance?: string; txs?: number; transactions?: Array<{ txid: string; blockTime?: number; confirmations?: number; vin?: Array<{ addresses?: string[]; value?: string }>; vout?: Array<{ addresses?: string[]; value?: string }> }> }
 
 async function zecBlockchair(address: string): Promise<ZecAccount | null> {
   const r = await fetch(`https://api.blockchair.com/zcash/dashboards/address/${address}?transaction_details=true&limit=15`, { headers: UA, next: { revalidate: 300 }, signal: AbortSignal.timeout(7000) });
@@ -335,25 +344,16 @@ async function zecBlockchair(address: string): Promise<ZecAccount | null> {
   return { address, zec: (d.address.balance ?? 0) / ZAT_PER_ZEC, pendingZec: 0, txCount: d.address.transaction_count ?? 0, moves, source: 'Blockchair' };
 }
 
-async function zecBlockbook(base: string, address: string): Promise<ZecAccount | null> {
-  const r = await fetch(`${base}/api/v2/address/${address}?details=txs&pageSize=15`, { headers: UA, next: { revalidate: 120 }, signal: AbortSignal.timeout(7000) });
-  if (!r.ok) { console.error('[zec]', base, `HTTP ${r.status}`); return null; }
-  const a = (await r.json()) as BlockbookAddr;
-  if (a.balance == null) return null;
-  const sum = (xs: Array<{ addresses?: string[]; value?: string }> | undefined) => (xs ?? []).filter((x) => x.addresses?.includes(address)).reduce((n, x) => n + Number(x.value ?? 0), 0);
-  const moves = (a.transactions ?? []).map((t) => ({
-    txid: t.txid, date: t.blockTime ? new Date(t.blockTime * 1000) : null, zec: (sum(t.vout) - sum(t.vin)) / ZAT_PER_ZEC, confirmed: (t.confirmations ?? 0) > 0,
-  }));
-  return { address, zec: Number(a.balance) / ZAT_PER_ZEC, pendingZec: Number(a.unconfirmedBalance ?? 0) / ZAT_PER_ZEC, txCount: a.txs ?? 0, moves, source: new URL(base).hostname };
-}
-
 export async function loadZecAccount(address: string): Promise<ZecAccount> {
   if (fake()) return { address, zec: 12.5, pendingZec: 0, txCount: 2, moves: [{ txid: 'TESTZEC', date: new Date(Date.now() - 5 * 86_400_000), zec: 12.5, confirmed: true }], source: 'Test' };
   return cached(`zec:${address}`, 120_000, async () => {
-    // Blockchair zuerst (von Vercel aus erreichbar); Blockbook-Instanzen sperren Server-Abrufe meist (403) → nur Ausweich
-    try { const a = await zecBlockchair(address); if (a) return a; } catch (e) { console.error('[zec] blockchair', (e as Error).message); }
-    for (const base of ZEC_BLOCKBOOK) {
-      try { const a = await zecBlockbook(base, address); if (a) return a; } catch (e) { console.error('[zec]', base, (e as Error).message); }
+    // Blockbook (ZelCore) zuerst; Blockchair sperrt Vercel-IPs zeitweise (HTTP 430) → nur Ausweich, und nicht für ganze Konten
+    try {
+      const a = await blockbookLoad('zec', address);
+      return { address, zec: a.balance, pendingZec: a.pending, txCount: a.txCount, moves: a.moves.map((m) => ({ txid: m.txid, date: m.date, zec: m.amount, confirmed: m.confirmed })), ...wholeInfo(a) };
+    } catch (e) { console.error('[zec] blockbook', (e as Error).message); }
+    if (!isDescriptor(address)) {
+      try { const a = await zecBlockchair(address); if (a) return a; } catch (e) { console.error('[zec] blockchair', (e as Error).message); }
     }
     return { address, zec: NaN, pendingZec: 0, txCount: 0, moves: [], error: 'Zcash-Netz gerade nicht erreichbar.' };
   });
@@ -422,8 +422,7 @@ export async function loadXlmAccount(address: string): Promise<XlmAccount> {
 // ---------- Litecoin ----------
 // Mehrere Quellen gleichzeitig, die erste gültige Antwort gewinnt (litecoinspace.org ist von Vercel aus oft langsam,
 // Blockchair drosselt Server-IPs mit HTTP 430).
-export interface LtcAccount { address: string; ltc: number; pendingLtc: number; txCount: number; moves: Array<{ txid: string; date: Date | null; ltc: number; confirmed: boolean }>; source?: string; error?: string;
-  /** true = ganzes Konto über den Kontoschlüssel (alle Empfangs- und Wechselgeld-Adressen) */ whole?: boolean; usedAddresses?: number; withBalance?: number }
+export interface LtcAccount extends WholeInfo { address: string; ltc: number; pendingLtc: number; txCount: number; moves: Array<{ txid: string; date: Date | null; ltc: number; confirmed: boolean }>; error?: string }
 
 async function ltcEsplora(address: string): Promise<LtcAccount> {
   const base = 'https://litecoinspace.org/api';
@@ -472,26 +471,9 @@ async function ltcBlockchair(address: string): Promise<LtcAccount> {
   };
 }
 
-// Blockbook (wie Trezor/Ledger intern) – litecoinblockexplorer.net lässt Server-Abrufe zu, kann ganze Konten (xpub)
-const LTC_BLOCKBOOK = 'https://litecoinblockexplorer.net';
-interface BbTx { txid: string; blockTime?: number; confirmations?: number; vin?: Array<{ addresses?: string[]; value?: string; isOwn?: boolean }>; vout?: Array<{ addresses?: string[]; value?: string; isOwn?: boolean }> }
 async function ltcBlockbook(target: string): Promise<LtcAccount> {
-  const xpub = isLtcDescriptor(target);
-  const url = `${LTC_BLOCKBOOK}/api/v2/${xpub ? 'xpub' : 'address'}/${encodeURIComponent(target)}?details=txs&pageSize=15${xpub ? '&tokens=used' : ''}`;
-  const r = await fetch(url, { headers: { 'user-agent': 'Mozilla/5.0 (Jarvis read-only)', accept: 'application/json' }, next: { revalidate: 120 }, signal: AbortSignal.timeout(12_000) });
-  if (!r.ok) throw new Error(`blockbook HTTP ${r.status}`);
-  const j = (await r.json()) as { balance?: string; unconfirmedBalance?: string; txs?: number; transactions?: BbTx[]; tokens?: Array<{ name: string; balance?: string }> };
-  if (j.balance == null) throw new Error('blockbook ohne Saldo');
-  const own = new Set<string>(xpub ? (j.tokens ?? []).map((t) => t.name) : [target]);
-  const mine = (x: { addresses?: string[]; isOwn?: boolean }) => x.isOwn ?? (x.addresses ?? []).some((a) => own.has(a));
-  const moves = (j.transactions ?? []).map((t) => ({
-    txid: t.txid, date: t.blockTime ? new Date(t.blockTime * 1000) : null, confirmed: (t.confirmations ?? 0) > 0,
-    ltc: ((t.vout ?? []).filter(mine).reduce((n, o) => n + Number(o.value ?? 0), 0) - (t.vin ?? []).filter(mine).reduce((n, i) => n + Number(i.value ?? 0), 0)) / LITOSHI_PER_LTC,
-  }));
-  return {
-    address: target, ltc: Number(j.balance) / LITOSHI_PER_LTC, pendingLtc: Number(j.unconfirmedBalance ?? 0) / LITOSHI_PER_LTC, txCount: j.txs ?? 0, moves, source: 'litecoinblockexplorer.net',
-    ...(xpub ? { whole: true, usedAddresses: (j.tokens ?? []).length, withBalance: (j.tokens ?? []).filter((t) => Number(t.balance ?? 0) > 0).length } : {}),
-  };
+  const a = await blockbookLoad('ltc', target);
+  return { address: target, ltc: a.balance, pendingLtc: a.pending, txCount: a.txCount, moves: a.moves.map((m) => ({ txid: m.txid, date: m.date, ltc: m.amount, confirmed: m.confirmed })), ...wholeInfo(a) };
 }
 
 export async function loadLtcAccount(address: string): Promise<LtcAccount> {
@@ -500,7 +482,7 @@ export async function loadLtcAccount(address: string): Promise<LtcAccount> {
     try {
       // Ganzes Konto nur über Blockbook; Einzeladressen: mehrere Quellen, die erste gültige Antwort gewinnt.
       // Blockchair nur noch als letzte Rettung – es sperrt Server-IPs schnell (HTTP 430) und wird für Zcash gebraucht.
-      if (isLtcDescriptor(address)) return await ltcBlockbook(address);
+      if (isDescriptor(address)) return await ltcBlockbook(address);
       return await Promise.any([ltcBlockbook(address), ltcEsplora(address), ltcBlockcypher(address)]).catch(() => ltcBlockchair(address));
     } catch (e) {
       for (const x of (e as AggregateError).errors ?? [e]) console.error('[ltc]', (x as Error).message);

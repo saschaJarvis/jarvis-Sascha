@@ -10,7 +10,7 @@ import { removeAccountAction, removeGoldAction, removeWalletAction } from './act
 import { loadNetWorth } from '@/server/networth';
 import { CryptoChange, NetWorthCard } from '@/components/net-worth';
 import { AutoRefresh } from '@/components/auto-refresh';
-import { isLtcDescriptor } from '@/lib/crypto/ltc';
+import { isDescriptor, keyOfDescriptor } from '@/lib/crypto/xpub';
 import { StatementsSection } from '@/components/statements';
 import { kickStatements, loadStatements } from '@/server/statements';
 import { claudeAvailable } from '@/server/claude';
@@ -36,7 +36,7 @@ export default async function FinancePage() {
     loadNetWorth(s),
   ]);
   const statements = await loadStatements(s);
-  const EXPLORER: Record<Coin, (a: string) => string> = { xrp: (a) => `https://livenet.xrpl.org/accounts/${a}`, eth: (a) => `https://etherscan.io/address/${a}`, btc: (a) => `https://mempool.space/address/${a}`, ada: (a) => `https://cardanoscan.io/address/${a}`, algo: (a) => `https://allo.info/account/${a}`, zec: (a) => `https://blockchair.com/zcash/address/${a}`, atom: (a) => `https://www.mintscan.io/cosmos/address/${a}`, xlm: (a) => `https://stellar.expert/explorer/public/account/${a}`, ltc: (a) => (isLtcDescriptor(a) ? `https://litecoinblockexplorer.net/xpub/${encodeURIComponent(a)}` : `https://litecoinspace.org/address/${a}`) };
+  const EXPLORER: Record<Coin, (a: string) => string> = { xrp: (a) => `https://livenet.xrpl.org/accounts/${a}`, eth: (a) => `https://etherscan.io/address/${a}`, btc: (a) => (isDescriptor(a) ? `https://btc1.trezor.io/xpub/${encodeURIComponent(a)}` : `https://mempool.space/address/${a}`), ada: (a) => `https://cardanoscan.io/address/${a}`, algo: (a) => `https://allo.info/account/${a}`, zec: (a) => (isDescriptor(a) ? `https://blockbook.zec.zelcore.io/xpub/${encodeURIComponent(a)}` : `https://blockchair.com/zcash/address/${a}`), atom: (a) => `https://www.mintscan.io/cosmos/address/${a}`, xlm: (a) => `https://stellar.expert/explorer/public/account/${a}`, ltc: (a) => (isDescriptor(a) ? `https://litecoinblockexplorer.net/xpub/${encodeURIComponent(a)}` : `https://litecoinspace.org/address/${a}`) };
   const now = new Date();
 
   return (
@@ -164,7 +164,7 @@ export default async function FinancePage() {
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
                     <p className="font-semibold">{w.label} <span className="mono text-xs text-muted">{sym}</span></p>
-                    <a className="mono break-all text-xs text-sea underline" href={EXPLORER[w.chain](w.address)} target="_blank" rel="noopener noreferrer">{isLtcDescriptor(w.address) ? `Kontoschlüssel ${short(w.address.replace(/^(sh\(wpkh|wpkh|pkh)\(|\)+$/g, ''))}` : short(w.address)} ↗</a>
+                    <a className="mono break-all text-xs text-sea underline" href={EXPLORER[w.chain](w.address)} target="_blank" rel="noopener noreferrer">{isDescriptor(w.address) ? `Kontoschlüssel ${short(keyOfDescriptor(w.address))}` : short(w.address)} ↗</a>
                   </div>
                   <div className="text-right">
                     {v.error ? <p className="text-sm text-warn">{v.error}</p>
@@ -193,14 +193,15 @@ export default async function FinancePage() {
                 {b && !b.error && (
                   <>
                     {b.pendingBtc !== 0 && <p className="text-xs text-warn">Unbestätigt: {b.pendingBtc > 0 ? '+' : ''}{nf(b.pendingBtc, 8)} BTC</p>}
-                    {b.btc === 0 && (
+                    {b.whole && <p className="text-xs text-muted">Ganzes Bitcoin-Konto: alle Empfangs- und Wechselgeld-Adressen ({b.usedAddresses ?? 0} benutzt, {b.withBalance ?? 0} mit Guthaben) – sollte genau mit Ledger Live übereinstimmen.</p>}
+                    {!b.whole && b.btc === 0 && (
                       <p className="notice notice-warn text-sm">
                         {b.txCount > 0
                           ? `Auf dieser Adresse liegt gerade 0 BTC – sie wurde schon ${b.txCount}× benutzt und ist inzwischen leer. Ledger Live nimmt für jeden Empfang eine neue Adresse; dein Bitcoin liegt also vermutlich auf neueren Adressen.`
                           : 'Diese Adresse wurde noch nie benutzt (0 BTC). Ledger Live verteilt Bitcoin auf mehrere Adressen.'}
                       </p>
                     )}
-                    <p className="text-xs text-muted">Zeigt nur diese eine Adresse. Ledger Live verteilt Bitcoin oft auf mehrere Adressen – stimmt der Betrag nicht mit Ledger Live überein, füge die weiteren Adressen hinzu.</p>
+                    {!b.whole && <p className="text-xs text-muted">Zeigt nur diese eine Adresse. Ledger Live verteilt Bitcoin auf viele Adressen – für den genauen Betrag den Kontoschlüssel einfügen (Ledger Live: Konto bearbeiten → Erweitert).</p>}
                     {b.moves.length > 0 && (
                       <details>
                         <summary className="cursor-pointer text-sm text-sea">Letzte Bewegungen ({b.moves.length})</summary>
@@ -250,7 +251,7 @@ export default async function FinancePage() {
                 {z && !z.error && (
                   <>
                     {z.pendingZec !== 0 && <p className="text-xs text-warn">Unbestätigt: {z.pendingZec > 0 ? '+' : ''}{nf(z.pendingZec, 8)} ZEC</p>}
-                    <p className="text-xs text-muted">Zeigt nur das transparente Guthaben dieser t1-Adresse{z.source ? ` (Quelle: ${z.source})` : ''}. Abgeschirmte (shielded) ZEC sind von außen nicht sichtbar.{z.zec === 0 && z.txCount > 0 ? ` Die Adresse wurde ${z.txCount}× benutzt und ist gerade leer – Ledger Live nimmt für jeden Empfang eine neue Adresse.` : ''}</p>
+                    <p className="text-xs text-muted">{z.whole ? `Ganzes Zcash-Konto: alle transparenten Adressen (${z.usedAddresses ?? 0} benutzt, ${z.withBalance ?? 0} mit Guthaben).` : 'Zeigt nur das transparente Guthaben dieser t1-Adresse.'}{z.source ? ` Quelle: ${z.source}.` : ''} Abgeschirmte (shielded) ZEC sind von außen nicht sichtbar.{!z.whole && z.zec === 0 && z.txCount > 0 ? ` Die Adresse wurde ${z.txCount}× benutzt und ist gerade leer – für den genauen Betrag den Kontoschlüssel aus Ledger Live einfügen (Konto bearbeiten → Erweitert).` : ''}</p>
                     {z.moves.length > 0 && (
                       <details>
                         <summary className="cursor-pointer text-sm text-sea">Letzte Bewegungen ({z.moves.length})</summary>

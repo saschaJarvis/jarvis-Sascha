@@ -70,7 +70,7 @@ export function isBtcAddress(addr: string): boolean {
 
 export function btcAddressHint(addr: string): string | null {
   const a = addr.trim();
-  if (/^[xyz]pub/i.test(a)) return 'Das ist ein erweiterter öffentlicher Schlüssel (xpub/zpub). Der zeigt das ganze Konto – das kann Jarvis noch nicht. Bitte vorerst eine einzelne Adresse (1…, 3… oder bc1…) eingeben.';
+  if (/^[xyz]pub/i.test(a)) return 'Der Kontoschlüssel (xpub/ypub/zpub) ist nicht gültig – bitte vollständig aus Ledger Live kopieren oder den ganzen Export einfügen.';
   if (/^(tb1|[mn2])/.test(a)) return 'Das ist eine Testnet-Adresse. Bitte die normale Bitcoin-Adresse verwenden.';
   if (/^(1|3|bc1)/i.test(a)) return 'Die Bitcoin-Adresse ist nicht gültig (Prüfsumme stimmt nicht) – vermutlich ein Tippfehler. Am besten direkt aus Ledger Live kopieren.';
   return null;
