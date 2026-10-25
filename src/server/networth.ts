@@ -2,7 +2,7 @@ import 'server-only';
 import { db } from './repo';
 import type { Session } from './auth';
 import { getFx } from './ext';
-import { coinPrices, loadAdaAccount, loadAlgoAccount, loadBtcAccount, loadEthAccount, loadXrpAccount, loadZecAccount, loadAtomAccount, loadXlmAccount, WALLETS_SQL, type Coin, type PriceCoin } from './wallets';
+import { coinPrices, loadAdaAccount, loadAlgoAccount, loadBtcAccount, loadEthAccount, loadXrpAccount, loadZecAccount, loadAtomAccount, loadXlmAccount, loadLtcAccount, WALLETS_SQL, type Coin, type PriceCoin } from './wallets';
 import { goldValueUsd, sumParts, toAed, AED_PER_USD } from '@/lib/domain/networth';
 import { portfolioChange } from '@/lib/domain/change';
 
@@ -70,6 +70,7 @@ export async function loadNetWorth(s: Session): Promise<NetWorth> {
       const a = await loadAlgoAccount(w.address);
       return { error: !!a.error, assets: [{ symbol: 'ALGO', amount: a.algo, price: 'algo' as const }, ...a.tokens.map((t) => ({ ...t, price: 'usd' as const }))] };
     }
+    if (w.chain === 'ltc') { const a = await loadLtcAccount(w.address); return { error: !!a.error, assets: [{ symbol: 'LTC', amount: a.ltc, price: 'ltc' as const }] }; }
     if (w.chain === 'xlm') { const a = await loadXlmAccount(w.address); return { error: !!a.error, assets: [{ symbol: 'XLM', amount: a.xlm, price: 'xlm' as const }, ...a.tokens.map((t) => ({ ...t, price: 'usd' as const }))] }; }
     if (w.chain === 'atom') { const a = await loadAtomAccount(w.address); return { error: !!a.error, assets: [{ symbol: 'ATOM', amount: a.atom, price: 'atom' as const }] }; }
     if (w.chain === 'zec') { const a = await loadZecAccount(w.address); return { error: !!a.error, assets: [{ symbol: 'ZEC', amount: a.zec, price: 'zec' as const }] }; }

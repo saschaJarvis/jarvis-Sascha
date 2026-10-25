@@ -5,6 +5,7 @@ import { SATS_PER_BTC } from '@/lib/crypto/btc';
 import { ZAT_PER_ZEC } from '@/lib/crypto/zec';
 import { UATOM_PER_ATOM } from '@/lib/crypto/atom';
 import { XLM_STABLES } from '@/lib/crypto/xlm';
+import { LITOSHI_PER_LTC } from '@/lib/crypto/ltc';
 import { LOVELACE_PER_ADA, stakeAddressOf } from '@/lib/crypto/ada';
 import { ALGO_STABLES, MICRO_PER_ALGO } from '@/lib/crypto/algo';
 import { priceAgo, relChange } from '@/lib/domain/change';
@@ -96,7 +97,7 @@ export async function loadXrpAccount(address: string): Promise<XrpAccount> {
   });
 }
 
-export type Coin = 'xrp' | 'eth' | 'btc' | 'ada' | 'algo' | 'zec' | 'atom' | 'xlm';
+export type Coin = 'xrp' | 'eth' | 'btc' | 'ada' | 'algo' | 'zec' | 'atom' | 'xlm' | 'ltc';
 /** Kurs-Kürzel: Ketten + Tokens mit eigenem Kurs (z. B. Quant auf Ethereum) */
 export type PriceCoin = Coin | 'qnt' | 'fet';
 
@@ -109,10 +110,11 @@ export const WALLETS_SQL = `select id, chain, address, label, created_at from (
   union all select id, 'algo'::text, address, label, created_at from algo_wallets where deleted_at is null
   union all select id, 'zec'::text, address, label, created_at from zec_wallets where deleted_at is null
   union all select id, 'atom'::text, address, label, created_at from atom_wallets where deleted_at is null
-  union all select id, 'xlm'::text, address, label, created_at from xlm_wallets where deleted_at is null) w order by created_at`;
-const GECKO: Record<PriceCoin, string> = { xrp: 'ripple', eth: 'ethereum', btc: 'bitcoin', ada: 'cardano', algo: 'algorand', zec: 'zcash', atom: 'cosmos', xlm: 'stellar', qnt: 'quant-network', fet: 'fetch-ai' };
+  union all select id, 'xlm'::text, address, label, created_at from xlm_wallets where deleted_at is null
+  union all select id, 'ltc'::text, address, label, created_at from ltc_wallets where deleted_at is null) w order by created_at`;
+const GECKO: Record<PriceCoin, string> = { xrp: 'ripple', eth: 'ethereum', btc: 'bitcoin', ada: 'cardano', algo: 'algorand', zec: 'zcash', atom: 'cosmos', xlm: 'stellar', ltc: 'litecoin', qnt: 'quant-network', fet: 'fetch-ai' };
 
-const KRAKEN_PAIR: Record<PriceCoin, string> = { btc: 'XBT', eth: 'ETH', xrp: 'XRP', ada: 'ADA', algo: 'ALGO', zec: 'ZEC', atom: 'ATOM', xlm: 'XLM', qnt: 'QNT', fet: 'FET' };
+const KRAKEN_PAIR: Record<PriceCoin, string> = { btc: 'XBT', eth: 'ETH', xrp: 'XRP', ada: 'ADA', algo: 'ALGO', zec: 'ZEC', atom: 'ATOM', xlm: 'XLM', ltc: 'LTC', qnt: 'QNT', fet: 'FET' };
 const PRICE_TTL = 20; // Sekunden – „quasi Echtzeit“; Kraken erlaubt ~1 Abfrage/s je IP
 
 /**
@@ -120,10 +122,10 @@ const PRICE_TTL = 20; // Sekunden – „quasi Echtzeit“; Kraken erlaubt ~1 Ab
  * letzter Handelspreis in EUR und USD, dazu die 24-h-Veränderung aus Stundenkerzen.
  * Ausweich: CoinGecko (Durchschnitt mehrerer Börsen, inkl. 24-h-Änderung). AED über die USD-Bindung.
  */
-export async function coinPrices(coins: readonly PriceCoin[] = ['xrp', 'eth', 'btc', 'ada', 'algo', 'zec', 'atom', 'xlm', 'qnt', 'fet']): Promise<Partial<Record<PriceCoin, Price>>> {
+export async function coinPrices(coins: readonly PriceCoin[] = ['xrp', 'eth', 'btc', 'ada', 'algo', 'zec', 'atom', 'xlm', 'ltc', 'qnt', 'fet']): Promise<Partial<Record<PriceCoin, Price>>> {
   if (fake()) {
     const t = (eur: number, usd: number, change24h: number) => ({ eur, usd, aed: usd * AED_PER_USD, source: 'Test', at: new Date(), change24h });
-    return { xrp: t(2, 2.2, 0.1), eth: t(3000, 3300, -0.02), btc: t(90000, 100000, 0.01), ada: t(0.6, 0.7, 0), algo: t(0.2, 0.22, 0.05), zec: t(40, 44, 0.02), atom: t(4, 4.4, -0.01), xlm: t(0.3, 0.33, 0.01), qnt: t(80, 90, -0.03), fet: t(0.5, 0.55, 0.01) };
+    return { xrp: t(2, 2.2, 0.1), eth: t(3000, 3300, -0.02), btc: t(90000, 100000, 0.01), ada: t(0.6, 0.7, 0), algo: t(0.2, 0.22, 0.05), zec: t(40, 44, 0.02), atom: t(4, 4.4, -0.01), xlm: t(0.3, 0.33, 0.01), ltc: t(80, 88, 0.01), qnt: t(80, 90, -0.03), fet: t(0.5, 0.55, 0.01) };
   }
   const out: Partial<Record<PriceCoin, Price>> = {};
   if (!coins.length) return out;
@@ -414,5 +416,49 @@ export async function loadXlmAccount(address: string): Promise<XlmAccount> {
       } catch (e) { console.error('[xlm]', base, (e as Error).message); }
     }
     return { address, xlm: NaN, reserveXlm: 0, tokens: [], activated: true, error: 'Stellar-Netz gerade nicht erreichbar.' };
+  });
+}
+
+// ---------- Litecoin (Esplora-API wie bei Bitcoin) ----------
+export interface LtcAccount { address: string; ltc: number; pendingLtc: number; txCount: number; moves: Array<{ txid: string; date: Date | null; ltc: number; confirmed: boolean }>; error?: string }
+const LTC_APIS = ['https://litecoinspace.org/api'];
+
+export async function loadLtcAccount(address: string): Promise<LtcAccount> {
+  if (fake()) return { address, ltc: 3, pendingLtc: 0, txCount: 1, moves: [{ txid: 'TESTLTC', date: new Date(Date.now() - 86_400_000), ltc: 3, confirmed: true }] };
+  return cached(`ltc:${address}`, 120_000, async () => {
+    for (const base of LTC_APIS) {
+      try {
+        const [ar, tr] = await Promise.all([
+          fetch(`${base}/address/${address}`, { next: { revalidate: 120 }, signal: AbortSignal.timeout(7000) }),
+          fetch(`${base}/address/${address}/txs`, { next: { revalidate: 120 }, signal: AbortSignal.timeout(7000) }),
+        ]);
+        if (!ar.ok) { console.error('[ltc]', base, `HTTP ${ar.status}`); continue; }
+        const a = (await ar.json()) as EsploraAddr;
+        const txs = tr.ok ? ((await tr.json()) as EsploraTx[]) : [];
+        const moves = txs.slice(0, 15).map((t) => {
+          const inn = t.vout.filter((o) => o.scriptpubkey_address === address).reduce((n, o) => n + o.value, 0);
+          const out = t.vin.filter((i) => i.prevout?.scriptpubkey_address === address).reduce((n, i) => n + (i.prevout?.value ?? 0), 0);
+          return { txid: t.txid, date: t.status.block_time ? new Date(t.status.block_time * 1000) : null, ltc: (inn - out) / LITOSHI_PER_LTC, confirmed: t.status.confirmed };
+        });
+        return {
+          address, ltc: (a.chain_stats.funded_txo_sum - a.chain_stats.spent_txo_sum) / LITOSHI_PER_LTC,
+          pendingLtc: (a.mempool_stats.funded_txo_sum - a.mempool_stats.spent_txo_sum) / LITOSHI_PER_LTC, txCount: a.chain_stats.tx_count, moves,
+        };
+      } catch (e) { console.error('[ltc]', base, (e as Error).message); }
+    }
+    // Ausweich: Blockchair
+    try {
+      const r = await fetch(`https://api.blockchair.com/litecoin/dashboards/address/${address}?transaction_details=true&limit=15`, { headers: { accept: 'application/json' }, next: { revalidate: 300 }, signal: AbortSignal.timeout(7000) });
+      if (r.ok) {
+        const j = (await r.json()) as { data?: Record<string, { address?: { balance?: number; transaction_count?: number }; transactions?: Array<{ hash: string; time?: string; balance_change?: number; block_id?: number }> }> };
+        const d = j.data?.[address];
+        return {
+          address, ltc: (d?.address?.balance ?? 0) / LITOSHI_PER_LTC, pendingLtc: 0, txCount: d?.address?.transaction_count ?? 0,
+          moves: (d?.transactions ?? []).map((t) => ({ txid: t.hash, date: t.time ? new Date(`${t.time.replace(' ', 'T')}Z`) : null, ltc: (t.balance_change ?? 0) / LITOSHI_PER_LTC, confirmed: (t.block_id ?? -1) > 0 })),
+        };
+      }
+      console.error('[ltc] blockchair', `HTTP ${r.status}`);
+    } catch (e) { console.error('[ltc] blockchair', (e as Error).message); }
+    return { address, ltc: NaN, pendingLtc: 0, txCount: 0, moves: [], error: 'Litecoin-Netz gerade nicht erreichbar.' };
   });
 }

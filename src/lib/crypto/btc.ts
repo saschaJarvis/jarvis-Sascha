@@ -8,7 +8,7 @@ import { createHash } from 'node:crypto';
 const B58 = '123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz';
 const sha256 = (b: Buffer) => createHash('sha256').update(b).digest();
 
-function base58check(addr: string): Buffer | null {
+export function base58check(addr: string): Buffer | null {
   let n = 0n;
   for (const ch of addr) {
     const i = B58.indexOf(ch);
@@ -37,14 +37,14 @@ function polymod(values: number[]): number {
 }
 const hrpExpand = (hrp: string) => [...[...hrp].map((c) => c.charCodeAt(0) >> 5), 0, ...[...hrp].map((c) => c.charCodeAt(0) & 31)];
 
-function segwitValid(addr: string): boolean {
+export function segwitValid(addr: string, hrp = 'bc'): boolean {
   const a = addr.toLowerCase();
   if (addr !== a && addr !== addr.toUpperCase()) return false; // gemischte Schreibweise unzulässig
   const pos = a.lastIndexOf('1');
-  if (a.slice(0, pos) !== 'bc' || a.length < 14 || a.length > 90) return false;
+  if (a.slice(0, pos) !== hrp || a.length < 14 || a.length > 90) return false;
   const data = [...a.slice(pos + 1)].map((c) => CHARSET.indexOf(c));
   if (data.some((d) => d < 0) || data.length < 7) return false;
-  const pm = polymod([...hrpExpand('bc'), ...data]);
+  const pm = polymod([...hrpExpand(hrp), ...data]);
   const version = data[0];
   const expected = version === 0 ? 1 : 0x2bc830a3; // Bech32 für v0, Bech32m ab v1 (BIP-350)
   if (pm !== expected || version > 16) return false;

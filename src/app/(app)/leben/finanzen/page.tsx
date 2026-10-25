@@ -1,6 +1,6 @@
 import { requireUser } from '@/server/auth';
 import { db } from '@/server/repo';
-import { coinPrices, loadAdaAccount, loadAlgoAccount, loadBtcAccount, loadEthAccount, loadXrpAccount, loadZecAccount, loadAtomAccount, loadXlmAccount, WALLETS_SQL, type AdaAccount, type AlgoAccount, type BtcAccount, type Coin, type EthAccount, type PriceCoin, type XrpAccount, type ZecAccount, type AtomAccount, type XlmAccount } from '@/server/wallets';
+import { coinPrices, loadAdaAccount, loadAlgoAccount, loadBtcAccount, loadEthAccount, loadXrpAccount, loadZecAccount, loadAtomAccount, loadXlmAccount, loadLtcAccount, WALLETS_SQL, type AdaAccount, type AlgoAccount, type BtcAccount, type Coin, type EthAccount, type PriceCoin, type XrpAccount, type ZecAccount, type AtomAccount, type XlmAccount, type LtcAccount } from '@/server/wallets';
 import { AED_PER_USD } from '@/lib/domain/networth';
 import { PageTitle, Section } from '@/components/ui';
 import { timeAgo } from '@/lib/news';
@@ -20,7 +20,7 @@ const FORM: Record<string, string> = { bar: 'Barren', coin: 'Münze', jewelry: '
 export const dynamic = 'force-dynamic';
 
 const nf = (n: number, d = 2) => n.toLocaleString('de-DE', { minimumFractionDigits: d, maximumFractionDigits: d });
-const DEC: Record<Coin, number> = { xrp: 2, eth: 4, btc: 8, ada: 2, algo: 2, zec: 4, atom: 4, xlm: 2 };
+const DEC: Record<Coin, number> = { xrp: 2, eth: 4, btc: 8, ada: 2, algo: 2, zec: 4, atom: 4, xlm: 2, ltc: 4 };
 const short = (a: string) => `${a.slice(0, 6)}…${a.slice(-4)}`;
 
 export default async function FinancePage() {
@@ -30,12 +30,12 @@ export default async function FinancePage() {
   const wallets = await db(s).run((q) => q<{ id: string; chain: Coin; address: string; label: string }>(
     WALLETS_SQL));
   const [views, prices, nw] = await Promise.all([
-    Promise.all(wallets.map((w): Promise<XrpAccount | EthAccount | BtcAccount | AdaAccount | AlgoAccount | ZecAccount | AtomAccount | XlmAccount> => (w.chain === 'xlm' ? loadXlmAccount(w.address) : w.chain === 'atom' ? loadAtomAccount(w.address) : w.chain === 'zec' ? loadZecAccount(w.address) : w.chain === 'eth' ? loadEthAccount(w.address) : w.chain === 'btc' ? loadBtcAccount(w.address) : w.chain === 'ada' ? loadAdaAccount(w.address) : w.chain === 'algo' ? loadAlgoAccount(w.address) : loadXrpAccount(w.address)))),
+    Promise.all(wallets.map((w): Promise<XrpAccount | EthAccount | BtcAccount | AdaAccount | AlgoAccount | ZecAccount | AtomAccount | XlmAccount | LtcAccount> => (w.chain === 'ltc' ? loadLtcAccount(w.address) : w.chain === 'xlm' ? loadXlmAccount(w.address) : w.chain === 'atom' ? loadAtomAccount(w.address) : w.chain === 'zec' ? loadZecAccount(w.address) : w.chain === 'eth' ? loadEthAccount(w.address) : w.chain === 'btc' ? loadBtcAccount(w.address) : w.chain === 'ada' ? loadAdaAccount(w.address) : w.chain === 'algo' ? loadAlgoAccount(w.address) : loadXrpAccount(w.address)))),
     coinPrices([...new Set<PriceCoin>([...wallets.map((w) => w.chain), ...(wallets.some((w) => w.chain === 'eth') ? ['qnt' as const, 'fet' as const] : [])])]),
     loadNetWorth(s),
   ]);
   const statements = await loadStatements(s);
-  const EXPLORER: Record<Coin, (a: string) => string> = { xrp: (a) => `https://livenet.xrpl.org/accounts/${a}`, eth: (a) => `https://etherscan.io/address/${a}`, btc: (a) => `https://mempool.space/address/${a}`, ada: (a) => `https://cardanoscan.io/address/${a}`, algo: (a) => `https://allo.info/account/${a}`, zec: (a) => `https://blockchair.com/zcash/address/${a}`, atom: (a) => `https://www.mintscan.io/cosmos/address/${a}`, xlm: (a) => `https://stellar.expert/explorer/public/account/${a}` };
+  const EXPLORER: Record<Coin, (a: string) => string> = { xrp: (a) => `https://livenet.xrpl.org/accounts/${a}`, eth: (a) => `https://etherscan.io/address/${a}`, btc: (a) => `https://mempool.space/address/${a}`, ada: (a) => `https://cardanoscan.io/address/${a}`, algo: (a) => `https://allo.info/account/${a}`, zec: (a) => `https://blockchair.com/zcash/address/${a}`, atom: (a) => `https://www.mintscan.io/cosmos/address/${a}`, xlm: (a) => `https://stellar.expert/explorer/public/account/${a}`, ltc: (a) => `https://litecoinspace.org/address/${a}` };
   const now = new Date();
 
   return (
@@ -109,7 +109,7 @@ export default async function FinancePage() {
           <div className="card mb-3 grid gap-1">
             <p className="eyebrow">Krypto gesamt</p>
             <p className="text-2xl font-bold">{nf(nw.crypto.aed, 0)} AED</p>
-            <p className="text-muted">{nw.eurAed ? `≈ ${nf(nw.crypto.aed / nw.eurAed, 0)} € · ` : ''}{Object.entries(nw.crypto.holdings).filter(([, v]) => v != null).sort(([a], [b]) => ['BTC', 'ETH', 'XRP', 'ADA', 'ALGO', 'ZEC', 'ATOM', 'XLM', 'QNT', 'FET', 'USDT', 'USDC'].indexOf(a) - ['BTC', 'ETH', 'XRP', 'ADA', 'ALGO', 'ZEC', 'ATOM', 'XLM', 'QNT', 'FET', 'USDT', 'USDC'].indexOf(b)).map(([k, v]) => `${nf(v ?? 0, k === 'BTC' ? 8 : k === 'ETH' ? 4 : 2)} ${k}`).join(' · ')}</p>
+            <p className="text-muted">{nw.eurAed ? `≈ ${nf(nw.crypto.aed / nw.eurAed, 0)} € · ` : ''}{Object.entries(nw.crypto.holdings).filter(([, v]) => v != null).sort(([a], [b]) => ['BTC', 'ETH', 'LTC', 'XRP', 'ADA', 'ALGO', 'ZEC', 'ATOM', 'XLM', 'QNT', 'FET', 'USDT', 'USDC'].indexOf(a) - ['BTC', 'ETH', 'LTC', 'XRP', 'ADA', 'ALGO', 'ZEC', 'ATOM', 'XLM', 'QNT', 'FET', 'USDT', 'USDC'].indexOf(b)).map(([k, v]) => `${nf(v ?? 0, k === 'BTC' ? 8 : k === 'ETH' ? 4 : 2)} ${k}`).join(' · ')}</p>
             {nw.crypto.error && <p className="text-sm text-warn">Ein Teil ist gerade ohne Kurs oder Netz – nicht mitgezählt.</p>}
             {nw.crypto.change && <div className="mt-1"><CryptoChange ch={nw.crypto.change} asOf={nw.crypto.asOf} label="24 h" /></div>}
             {nw.crypto.coins.length > 0 && (
@@ -154,7 +154,8 @@ export default async function FinancePage() {
             const z = w.chain === 'zec' ? (v as ZecAccount) : null;
             const at = w.chain === 'atom' ? (v as AtomAccount) : null;
             const st = w.chain === 'xlm' ? (v as XlmAccount) : null;
-            const amount = x ? x.xrp : e ? e.eth : b ? b.btc : c ? c.ada : z ? z.zec : at ? at.atom : st ? st.xlm : g!.algo;
+            const lt = w.chain === 'ltc' ? (v as LtcAccount) : null;
+            const amount = x ? x.xrp : e ? e.eth : b ? b.btc : c ? c.ada : z ? z.zec : at ? at.atom : st ? st.xlm : lt ? lt.ltc : g!.algo;
             // Token-Wert in €: Stablecoins = 1 USD, andere (z. B. QNT) zum eigenen Kurs
             const tokenEur = e && nw.eurAed ? e.tokens.reduce((n, t) => n + (!Number.isFinite(t.amount) ? 0 : t.price === 'usd' ? (t.amount * AED_PER_USD) / nw.eurAed! : t.amount * (prices[t.price]?.eur ?? 0)), 0) : 0;
             return (
@@ -207,6 +208,26 @@ export default async function FinancePage() {
                             <li key={m.txid} className="flex items-baseline justify-between gap-2 border-b border-line pb-1 last:border-0">
                               <span className={m.btc > 0 ? 'text-good' : m.btc < 0 ? 'text-bad' : 'text-muted'}>{m.btc > 0 ? '↓ Eingang' : m.btc < 0 ? '↑ Ausgang' : '↔'}{!m.confirmed && ' (unbestätigt)'}</span>
                               <span className="shrink-0 text-right">{m.btc > 0 ? '+' : m.btc < 0 ? '−' : ''}{nf(Math.abs(m.btc), 8)} BTC
+                                <span className="block text-xs text-muted" suppressHydrationWarning>{m.date ? timeAgo(m.date, now) : 'ausstehend'}</span></span>
+                            </li>
+                          ))}
+                        </ul>
+                      </details>
+                    )}
+                  </>
+                )}
+                {lt && !lt.error && (
+                  <>
+                    {lt.pendingLtc !== 0 && <p className="text-xs text-warn">Unbestätigt: {lt.pendingLtc > 0 ? '+' : ''}{nf(lt.pendingLtc, 8)} LTC</p>}
+                    <p className="text-xs text-muted">Zeigt nur diese eine Adresse.{lt.ltc === 0 && lt.txCount > 0 ? ` Sie wurde ${lt.txCount}× benutzt und ist gerade leer – Ledger Live nimmt für jeden Empfang eine neue Adresse.` : ' Weicht der Betrag von Ledger Live ab, füge die weiteren Adressen hinzu.'}</p>
+                    {lt.moves.length > 0 && (
+                      <details>
+                        <summary className="cursor-pointer text-sm text-sea">Letzte Bewegungen ({lt.moves.length})</summary>
+                        <ul className="mt-2 grid gap-1 text-sm">
+                          {lt.moves.map((m) => (
+                            <li key={m.txid} className="flex items-baseline justify-between gap-2 border-b border-line pb-1 last:border-0">
+                              <span className={m.ltc > 0 ? 'text-good' : m.ltc < 0 ? 'text-bad' : 'text-muted'}>{m.ltc > 0 ? '↓ Eingang' : m.ltc < 0 ? '↑ Ausgang' : '↔'}{!m.confirmed && ' (unbestätigt)'}</span>
+                              <span className="shrink-0 text-right">{m.ltc > 0 ? '+' : m.ltc < 0 ? '−' : ''}{nf(Math.abs(m.ltc), 4)} LTC
                                 <span className="block text-xs text-muted" suppressHydrationWarning>{m.date ? timeAgo(m.date, now) : 'ausstehend'}</span></span>
                             </li>
                           ))}
@@ -279,7 +300,7 @@ export default async function FinancePage() {
         </ul>
 
         <div className="mt-3">
-          <ConnectSection initialOpen={wallets.length === 0} title="+ Wallet-Adresse hinzufügen (BTC / ETH / XRP / ADA / ALGO / ZEC / ATOM / XLM)">
+          <ConnectSection initialOpen={wallets.length === 0} title="+ Wallet-Adresse hinzufügen (BTC / ETH / XRP / ADA / ALGO / ZEC / ATOM / XLM / LTC)">
             <div className="mt-3"><AddWalletForm /></div>
           </ConnectSection>
         </div>
