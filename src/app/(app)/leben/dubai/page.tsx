@@ -43,7 +43,7 @@ export default async function DubaiPage() {
             <div className="flex aspect-[16/9] items-center justify-center rounded-xl border border-dashed border-line bg-sand text-center text-sm text-muted">
               Platzhalter – hier erscheint nur ein echtes Foto deiner Einheit,<br />sobald du eines mit Nutzungsrecht hochlädst.
             </div>
-            <p className="text-lg font-bold">{p.project_name}{p.developer ? ` · ${p.developer}` : ''}</p>
+            <p className="text-lg font-bold">{p.project_name}{p.developer && !p.project_name.toLowerCase().includes(p.developer.toLowerCase()) ? ` · ${p.developer}` : ''}</p>
             <dl className="grid gap-2 text-sm">
               <Row label="Lage" value={p.location} />
               <Row label="Größe" value={p.size_sqft ? `${Number(p.size_sqft).toLocaleString('de-DE')} sqft` : null} c={p.size_certainty} />

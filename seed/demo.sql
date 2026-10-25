@@ -39,5 +39,5 @@ select :uid, 'Büromietvertrag Mainz (BEISPIEL)', 'commercial_lease', true, 'inf
 -- Immobilie: Angaben aus dem Briefing, als "vermutet" markiert bis zum Dokumentbeleg. Kein Foto.
 insert into public.properties (user_id, project_name, developer, location, size_sqft, size_certainty, view_text, view_certainty,
                                financing_ltv_pct, financing_certainty)
-select :uid, 'Beach Walk Tower 3', 'Imtiaz', 'Dubai Islands', 880, 'inferred', 'Meerblick (laut Angabe)', 'inferred', 60, 'inferred'
+select :uid, 'Beachwalk 3 by Imtiaz', 'Imtiaz', 'Dubai Islands', 880, 'inferred', 'Meerblick (laut Angabe)', 'inferred', 60, 'inferred'
  where not exists (select 1 from public.properties where user_id = :uid);
