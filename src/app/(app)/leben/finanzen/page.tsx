@@ -1,6 +1,6 @@
 import { requireUser } from '@/server/auth';
 import { db } from '@/server/repo';
-import { coinPrices, loadBtcAccount, loadEthAccount, loadXrpAccount, WALLETS_SQL, type BtcAccount, type Coin, type EthAccount, type XrpAccount } from '@/server/wallets';
+import { coinPrices, loadAdaAccount, loadBtcAccount, loadEthAccount, loadXrpAccount, WALLETS_SQL, type AdaAccount, type BtcAccount, type Coin, type EthAccount, type XrpAccount } from '@/server/wallets';
 import { AED_PER_USD } from '@/lib/domain/networth';
 import { PageTitle, Section } from '@/components/ui';
 import { timeAgo } from '@/lib/news';
@@ -16,6 +16,7 @@ const FORM: Record<string, string> = { bar: 'Barren', coin: 'Münze', jewelry: '
 export const dynamic = 'force-dynamic';
 
 const nf = (n: number, d = 2) => n.toLocaleString('de-DE', { minimumFractionDigits: d, maximumFractionDigits: d });
+const DEC: Record<Coin, number> = { xrp: 2, eth: 4, btc: 8, ada: 2 };
 const short = (a: string) => `${a.slice(0, 6)}…${a.slice(-4)}`;
 
 export default async function FinancePage() {
@@ -23,11 +24,11 @@ export default async function FinancePage() {
   const wallets = await db(s).run((q) => q<{ id: string; chain: Coin; address: string; label: string }>(
     WALLETS_SQL));
   const [views, prices, nw] = await Promise.all([
-    Promise.all(wallets.map((w): Promise<XrpAccount | EthAccount | BtcAccount> => (w.chain === 'eth' ? loadEthAccount(w.address) : w.chain === 'btc' ? loadBtcAccount(w.address) : loadXrpAccount(w.address)))),
+    Promise.all(wallets.map((w): Promise<XrpAccount | EthAccount | BtcAccount | AdaAccount> => (w.chain === 'eth' ? loadEthAccount(w.address) : w.chain === 'btc' ? loadBtcAccount(w.address) : w.chain === 'ada' ? loadAdaAccount(w.address) : loadXrpAccount(w.address)))),
     coinPrices([...new Set(wallets.map((w) => w.chain))]),
     loadNetWorth(s),
   ]);
-  const EXPLORER: Record<Coin, (a: string) => string> = { xrp: (a) => `https://livenet.xrpl.org/accounts/${a}`, eth: (a) => `https://etherscan.io/address/${a}`, btc: (a) => `https://mempool.space/address/${a}` };
+  const EXPLORER: Record<Coin, (a: string) => string> = { xrp: (a) => `https://livenet.xrpl.org/accounts/${a}`, eth: (a) => `https://etherscan.io/address/${a}`, btc: (a) => `https://mempool.space/address/${a}`, ada: (a) => `https://cardanoscan.io/address/${a}` };
   const now = new Date();
 
   return (
@@ -91,7 +92,7 @@ export default async function FinancePage() {
         </div>
       </Section>
 
-      <Section title="Krypto · nur ansehen" aside={<span className="mono text-xs text-muted">{(Object.entries(prices) as Array<[Coin, { eur: number }]>).map(([c, p]) => `1 ${c.toUpperCase()} = ${nf(p.eur, c === 'xrp' ? 4 : 0)} €`).join(' · ')}</span>}>
+      <Section title="Krypto · nur ansehen" aside={<span className="mono text-xs text-muted">{(Object.entries(prices) as Array<[Coin, { eur: number }]>).map(([c, p]) => `1 ${c.toUpperCase()} = ${nf(p.eur, c === 'xrp' || c === 'ada' ? 4 : 0)} €`).join(' · ')}</span>}>
         <p className="notice notice-info mb-3 text-sm">
           🔒 Jarvis kennt nur deine <strong>öffentliche Adresse</strong> und kann damit nichts versenden. Deine 24 Wörter, PIN oder dein Ledger werden nie gebraucht – wer danach fragt, will dich betrügen.
         </p>
@@ -100,7 +101,7 @@ export default async function FinancePage() {
           <div className="card mb-3 grid gap-1">
             <p className="eyebrow">Krypto gesamt</p>
             <p className="text-2xl font-bold">{nf(nw.crypto.aed, 0)} AED</p>
-            <p className="text-muted">{nw.eurAed ? `≈ ${nf(nw.crypto.aed / nw.eurAed, 0)} € · ` : ''}{Object.entries(nw.crypto.holdings).filter(([, v]) => v != null).sort(([a], [b]) => ['BTC', 'ETH', 'XRP', 'USDT', 'USDC'].indexOf(a) - ['BTC', 'ETH', 'XRP', 'USDT', 'USDC'].indexOf(b)).map(([k, v]) => `${nf(v ?? 0, k === 'BTC' ? 8 : k === 'ETH' ? 4 : 2)} ${k}`).join(' · ')}</p>
+            <p className="text-muted">{nw.eurAed ? `≈ ${nf(nw.crypto.aed / nw.eurAed, 0)} € · ` : ''}{Object.entries(nw.crypto.holdings).filter(([, v]) => v != null).sort(([a], [b]) => ['BTC', 'ETH', 'XRP', 'ADA', 'USDT', 'USDC'].indexOf(a) - ['BTC', 'ETH', 'XRP', 'ADA', 'USDT', 'USDC'].indexOf(b)).map(([k, v]) => `${nf(v ?? 0, k === 'BTC' ? 8 : k === 'ETH' ? 4 : 2)} ${k}`).join(' · ')}</p>
             {nw.crypto.error && <p className="text-sm text-warn">Ein Teil ist gerade ohne Kurs oder Netz – nicht mitgezählt.</p>}
           </div>
         )}
@@ -113,7 +114,8 @@ export default async function FinancePage() {
             const x = w.chain === 'xrp' ? (v as XrpAccount) : null;
             const e = w.chain === 'eth' ? (v as EthAccount) : null;
             const b = w.chain === 'btc' ? (v as BtcAccount) : null;
-            const amount = x ? x.xrp : e ? e.eth : b!.btc;
+            const c = w.chain === 'ada' ? (v as AdaAccount) : null;
+            const amount = x ? x.xrp : e ? e.eth : b ? b.btc : c!.ada;
             const stableUsd = e ? e.tokens.reduce((n, t) => n + (Number.isFinite(t.amount) ? t.amount : 0), 0) : 0;
             return (
               <li key={w.id} className="card grid gap-2">
@@ -126,7 +128,7 @@ export default async function FinancePage() {
                     {v.error ? <p className="text-sm text-warn">{v.error}</p>
                       : x && !x.activated ? <p className="text-sm text-muted">Noch nicht aktiviert (0 XRP)</p>
                       : <>
-                        <p className="text-lg font-bold">{nf(amount, w.chain === 'xrp' ? 2 : w.chain === 'eth' ? 4 : 8)} {sym}</p>
+                        <p className="text-lg font-bold">{nf(amount, DEC[w.chain])} {sym}</p>
                         {p && <p className="text-sm text-muted">≈ {nf(amount * p.eur + (nw.eurAed ? (stableUsd * AED_PER_USD) / nw.eurAed : 0))} €</p>}
                       </>}
                   </div>
@@ -135,6 +137,12 @@ export default async function FinancePage() {
                   <p className="text-sm">{e.tokens.map((t) => Number.isFinite(t.amount) ? `+ ${nf(t.amount, 2)} ${t.symbol}` : `${t.symbol}: nicht abrufbar`).join(' · ')}</p>
                 )}
                 {e && !e.error && <p className="text-xs text-muted">Gezählt: ETH, USDT und USDC. Andere Tokens/NFTs siehst du über den Etherscan-Link.</p>}
+                {c && !c.error && (
+                  <p className="text-xs text-muted">
+                    {c.whole ? `Ganzes Cardano-Konto (alle Adressen) inkl. ${nf(c.rewardsAda, 2)} ADA Staking-Belohnungen.` : 'Nur diese Adresse (ohne Staking-Teil).'}
+                    {c.delegatedPool ? ' Gestaked.' : c.whole ? ' Nicht gestaked.' : ''}
+                  </p>
+                )}
                 {b && !b.error && (
                   <>
                     {b.pendingBtc !== 0 && <p className="text-xs text-warn">Unbestätigt: {b.pendingBtc > 0 ? '+' : ''}{nf(b.pendingBtc, 8)} BTC</p>}
@@ -196,7 +204,7 @@ export default async function FinancePage() {
         </ul>
 
         <div className="mt-3">
-          <ConnectSection initialOpen={wallets.length === 0} title="+ Wallet-Adresse hinzufügen (BTC / ETH / XRP)">
+          <ConnectSection initialOpen={wallets.length === 0} title="+ Wallet-Adresse hinzufügen (BTC / ETH / XRP / ADA)">
             <div className="mt-3"><AddWalletForm /></div>
           </ConnectSection>
         </div>

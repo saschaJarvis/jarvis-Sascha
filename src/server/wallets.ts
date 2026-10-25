@@ -2,6 +2,7 @@ import 'server-only';
 import { DROPS_PER_XRP, toMove, type XrpMove } from '@/lib/crypto/xrp';
 import { balanceOfData, ETH_TOKENS, fromUnits } from '@/lib/crypto/eth';
 import { SATS_PER_BTC } from '@/lib/crypto/btc';
+import { LOVELACE_PER_ADA, stakeAddressOf } from '@/lib/crypto/ada';
 import { AED_PER_USD } from './ext';
 
 /**
@@ -90,19 +91,20 @@ export async function loadXrpAccount(address: string): Promise<XrpAccount> {
   });
 }
 
-export type Coin = 'xrp' | 'eth' | 'btc';
+export type Coin = 'xrp' | 'eth' | 'btc' | 'ada';
 
 /** Alle Wallets des Nutzers (je Kette eine Tabelle, nur öffentliche Adressen). */
 export const WALLETS_SQL = `select id, chain, address, label, created_at from (
   select id, 'xrp'::text as chain, address, label, created_at from crypto_wallets where deleted_at is null
   union all select id, 'eth'::text, address, label, created_at from eth_wallets where deleted_at is null
-  union all select id, 'btc'::text, address, label, created_at from btc_wallets where deleted_at is null) w order by created_at`;
-const GECKO: Record<Coin, string> = { xrp: 'ripple', eth: 'ethereum', btc: 'bitcoin' };
-const KRAKEN: Record<Coin, string> = { xrp: 'XRP', eth: 'ETH', btc: 'XBT' };
+  union all select id, 'btc'::text, address, label, created_at from btc_wallets where deleted_at is null
+  union all select id, 'ada'::text, address, label, created_at from ada_wallets where deleted_at is null) w order by created_at`;
+const GECKO: Record<Coin, string> = { xrp: 'ripple', eth: 'ethereum', btc: 'bitcoin', ada: 'cardano' };
+const KRAKEN: Record<Coin, string> = { xrp: 'XRP', eth: 'ETH', btc: 'XBT', ada: 'ADA' };
 
 /** Kurse: CoinGecko (eine Abfrage für alle), Ausweich Kraken. AED über die feste USD-Bindung. */
-export async function coinPrices(coins: readonly Coin[] = ['xrp', 'eth', 'btc']): Promise<Partial<Record<Coin, Price>>> {
-  if (fake()) return { xrp: { eur: 2, usd: 2.2, aed: 2.2 * AED_PER_USD, source: 'Test', at: new Date() }, eth: { eur: 3000, usd: 3300, aed: 3300 * AED_PER_USD, source: 'Test', at: new Date() }, btc: { eur: 90000, usd: 100000, aed: 100000 * AED_PER_USD, source: 'Test', at: new Date() } };
+export async function coinPrices(coins: readonly Coin[] = ['xrp', 'eth', 'btc', 'ada']): Promise<Partial<Record<Coin, Price>>> {
+  if (fake()) return { xrp: { eur: 2, usd: 2.2, aed: 2.2 * AED_PER_USD, source: 'Test', at: new Date() }, eth: { eur: 3000, usd: 3300, aed: 3300 * AED_PER_USD, source: 'Test', at: new Date() }, btc: { eur: 90000, usd: 100000, aed: 100000 * AED_PER_USD, source: 'Test', at: new Date() }, ada: { eur: 0.6, usd: 0.7, aed: 0.7 * AED_PER_USD, source: 'Test', at: new Date() } };
   const out: Partial<Record<Coin, Price>> = {};
   if (!coins.length) return out;
   try {
@@ -204,4 +206,37 @@ export async function loadBtcAccount(address: string): Promise<BtcAccount> {
     } catch (e) { console.error('[btc]', base, (e as Error).message); }
   }
   return { address, btc: NaN, pendingBtc: 0, txCount: 0, moves: [], error: 'Bitcoin-Netz gerade nicht erreichbar.' };
+}
+
+// ---------- Cardano ----------
+const KOIOS = 'https://api.koios.rest/api/v1';
+
+export interface AdaAccount { address: string; stake: string | null; ada: number; rewardsAda: number; whole: boolean; delegatedPool: string | null; error?: string }
+
+async function koios<T>(path: string, body: unknown): Promise<T> {
+  const r = await fetch(`${KOIOS}/${path}`, {
+    method: 'POST', headers: { 'content-type': 'application/json', accept: 'application/json' },
+    body: JSON.stringify(body), next: { revalidate: 300 }, signal: AbortSignal.timeout(8000),
+  });
+  if (!r.ok) throw new Error(`HTTP ${r.status}`);
+  return (await r.json()) as T;
+}
+
+/** Ganzes Konto über die Stake-Adresse (alle Adressen + Belohnungen); sonst nur diese Adresse. */
+export async function loadAdaAccount(address: string): Promise<AdaAccount> {
+  const stake = stakeAddressOf(address);
+  if (fake()) return { address, stake, ada: 1000, rewardsAda: 12.5, whole: !!stake, delegatedPool: null };
+  return cached(`ada:${address}`, 120_000, async () => {
+    try {
+      if (stake) {
+        const [acc] = await koios<Array<{ total_balance?: string; rewards_available?: string; delegated_pool?: string | null; status?: string }>>('account_info', { _stake_addresses: [stake] });
+        if (acc) return { address, stake, ada: Number(acc.total_balance ?? 0) / LOVELACE_PER_ADA, rewardsAda: Number(acc.rewards_available ?? 0) / LOVELACE_PER_ADA, whole: true, delegatedPool: acc.delegated_pool ?? null };
+      }
+      const [a] = await koios<Array<{ balance?: string }>>('address_info', { _addresses: [address] });
+      return { address, stake, ada: Number(a?.balance ?? 0) / LOVELACE_PER_ADA, rewardsAda: 0, whole: false, delegatedPool: null };
+    } catch (e) {
+      console.error('[ada]', (e as Error).message);
+      return { address, stake, ada: NaN, rewardsAda: 0, whole: false, delegatedPool: null, error: 'Cardano-Netz gerade nicht erreichbar.' };
+    }
+  });
 }

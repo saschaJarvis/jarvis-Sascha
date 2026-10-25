@@ -2,7 +2,7 @@ import 'server-only';
 import { db } from './repo';
 import type { Session } from './auth';
 import { getFx } from './ext';
-import { coinPrices, loadBtcAccount, loadEthAccount, loadXrpAccount, WALLETS_SQL, type Coin } from './wallets';
+import { coinPrices, loadAdaAccount, loadBtcAccount, loadEthAccount, loadXrpAccount, WALLETS_SQL, type Coin } from './wallets';
 import { goldValueUsd, sumParts, toAed, AED_PER_USD } from '@/lib/domain/networth';
 
 const fake = () => process.env.CRYPTO_FAKE === '1' && process.env.AUTH_PROVIDER !== 'supabase';
@@ -60,6 +60,10 @@ export async function loadNetWorth(s: Session): Promise<NetWorth> {
   const chains = [...new Set(rows.wallets.map((w) => w.chain))];
   const [views, prices] = await Promise.all([
     Promise.all(rows.wallets.map(async (w) => {
+      if (w.chain === 'ada') {
+        const a = await loadAdaAccount(w.address);
+        return { error: !!a.error, native: { coin: 'ada' as Coin, amount: a.ada }, stable: 0, tokens: [] as Array<{ symbol: string; amount: number }> };
+      }
       if (w.chain === 'btc') {
         const a = await loadBtcAccount(w.address);
         return { error: !!a.error, native: { coin: 'btc' as Coin, amount: a.btc }, stable: 0, tokens: [] as Array<{ symbol: string; amount: number }> };

@@ -17,7 +17,7 @@ test('Gesamtvermögen: Konto + Gold + Krypto werden in AED addiert und auf der B
   await page.getByRole('button', { name: 'Gold hinzufügen' }).click();
   await expect(page.getByText('„Barren 100 g“ hinzugefügt.')).toBeVisible();
 
-  await page.getByLabel('Öffentliche Adresse (BTC, ETH oder XRP)').fill('rQdX87Eqmhvcw2HD1eWrRUdrbyzsgG7P5');
+  await page.getByLabel('Öffentliche Adresse (BTC, ETH, XRP oder ADA)').fill('rQdX87Eqmhvcw2HD1eWrRUdrbyzsgG7P5');
   await page.getByRole('button', { name: 'Adresse hinzufügen' }).click();
   await expect(page.getByText(/hinzugefügt – nur zum Ansehen/)).toBeVisible();
 
