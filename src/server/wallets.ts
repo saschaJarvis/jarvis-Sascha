@@ -103,7 +103,7 @@ export async function loadXrpAccount(address: string): Promise<XrpAccount> {
 
 export type Coin = 'xrp' | 'eth' | 'btc' | 'ada' | 'algo' | 'zec' | 'atom' | 'xlm' | 'ltc' | 'dot' | 'vet' | 'sol';
 /** Kurs-Kürzel: Ketten + Tokens mit eigenem Kurs (z. B. Quant auf Ethereum) */
-export type PriceCoin = Coin | 'qnt' | 'fet' | 'link' | 'render' | 'gala' | 'hbar' | 'cspr' | 'fil';
+export type PriceCoin = Coin | 'qnt' | 'fet' | 'link' | 'render' | 'gala' | 'hbar' | 'cspr' | 'fil' | 'best';
 
 /** Alle Wallets des Nutzers (je Kette eine Tabelle, nur öffentliche Adressen). */
 export const WALLETS_SQL = `select id, chain, address, label, created_at from (
@@ -119,10 +119,10 @@ export const WALLETS_SQL = `select id, chain, address, label, created_at from (
   union all select id, 'dot'::text, address, label, created_at from dot_wallets where deleted_at is null
   union all select id, 'vet'::text, address, label, created_at from vet_wallets where deleted_at is null
   union all select id, 'sol'::text, address, label, created_at from sol_wallets where deleted_at is null) w order by created_at`;
-const GECKO: Record<PriceCoin, string> = { xrp: 'ripple', eth: 'ethereum', btc: 'bitcoin', ada: 'cardano', algo: 'algorand', zec: 'zcash', atom: 'cosmos', xlm: 'stellar', ltc: 'litecoin', dot: 'polkadot', vet: 'vechain', sol: 'solana', qnt: 'quant-network', fet: 'fetch-ai', link: 'chainlink', render: 'render-token', gala: 'gala', hbar: 'hedera-hashgraph', cspr: 'casper-network', fil: 'filecoin' };
+const GECKO: Record<PriceCoin, string> = { xrp: 'ripple', eth: 'ethereum', btc: 'bitcoin', ada: 'cardano', algo: 'algorand', zec: 'zcash', atom: 'cosmos', xlm: 'stellar', ltc: 'litecoin', dot: 'polkadot', vet: 'vechain', sol: 'solana', qnt: 'quant-network', fet: 'fetch-ai', link: 'chainlink', render: 'render-token', gala: 'gala', hbar: 'hedera-hashgraph', cspr: 'casper-network', fil: 'filecoin', best: 'bitpanda-ecosystem-token' };
 
 // null = nicht bei Kraken gelistet → direkt CoinGecko (eine unbekannte Kraken-Paarung würde die ganze Abfrage scheitern lassen)
-const KRAKEN_PAIR: Record<PriceCoin, string | null> = { btc: 'XBT', eth: 'ETH', xrp: 'XRP', ada: 'ADA', algo: 'ALGO', zec: 'ZEC', atom: 'ATOM', xlm: 'XLM', ltc: 'LTC', dot: 'DOT', vet: 'VET', sol: 'SOL', qnt: 'QNT', fet: 'FET', link: 'LINK', render: 'RENDER', gala: 'GALA', hbar: 'HBAR', cspr: null, fil: 'FIL' };
+const KRAKEN_PAIR: Record<PriceCoin, string | null> = { btc: 'XBT', eth: 'ETH', xrp: 'XRP', ada: 'ADA', algo: 'ALGO', zec: 'ZEC', atom: 'ATOM', xlm: 'XLM', ltc: 'LTC', dot: 'DOT', vet: 'VET', sol: 'SOL', qnt: 'QNT', fet: 'FET', link: 'LINK', render: 'RENDER', gala: 'GALA', hbar: 'HBAR', cspr: null, fil: 'FIL', best: null };
 const PRICE_TTL = 20; // Sekunden – „quasi Echtzeit“; Kraken erlaubt ~1 Abfrage/s je IP
 
 /**
@@ -130,10 +130,10 @@ const PRICE_TTL = 20; // Sekunden – „quasi Echtzeit“; Kraken erlaubt ~1 Ab
  * letzter Handelspreis in EUR und USD, dazu die 24-h-Veränderung aus Stundenkerzen.
  * Ausweich: CoinGecko (Durchschnitt mehrerer Börsen, inkl. 24-h-Änderung). AED über die USD-Bindung.
  */
-export async function coinPrices(coins: readonly PriceCoin[] = ['xrp', 'eth', 'btc', 'ada', 'algo', 'zec', 'atom', 'xlm', 'ltc', 'dot', 'vet', 'sol', 'qnt', 'fet', 'link', 'render', 'gala', 'hbar', 'cspr', 'fil']): Promise<Partial<Record<PriceCoin, Price>>> {
+export async function coinPrices(coins: readonly PriceCoin[] = ['xrp', 'eth', 'btc', 'ada', 'algo', 'zec', 'atom', 'xlm', 'ltc', 'dot', 'vet', 'sol', 'qnt', 'fet', 'link', 'render', 'gala', 'hbar', 'cspr', 'fil', 'best']): Promise<Partial<Record<PriceCoin, Price>>> {
   if (fake()) {
     const t = (eur: number, usd: number, change24h: number) => ({ eur, usd, aed: usd * AED_PER_USD, source: 'Test', at: new Date(), change24h });
-    return { xrp: t(2, 2.2, 0.1), eth: t(3000, 3300, -0.02), btc: t(90000, 100000, 0.01), ada: t(0.6, 0.7, 0), algo: t(0.2, 0.22, 0.05), zec: t(40, 44, 0.02), atom: t(4, 4.4, -0.01), xlm: t(0.3, 0.33, 0.01), ltc: t(80, 88, 0.01), dot: t(4, 4.4, 0.02), vet: t(0.006, 0.0067, 0.01), sol: t(90, 100, 0.01), qnt: t(80, 90, -0.03), fet: t(0.5, 0.55, 0.01), link: t(10, 11, 0.01), render: t(1.5, 1.7, 0.01), gala: t(0.0016, 0.0018, 0.01), hbar: t(0.15, 0.17, 0.01), cspr: t(0.002, 0.0022, 0.01), fil: t(2, 2.2, 0.01) };
+    return { xrp: t(2, 2.2, 0.1), eth: t(3000, 3300, -0.02), btc: t(90000, 100000, 0.01), ada: t(0.6, 0.7, 0), algo: t(0.2, 0.22, 0.05), zec: t(40, 44, 0.02), atom: t(4, 4.4, -0.01), xlm: t(0.3, 0.33, 0.01), ltc: t(80, 88, 0.01), dot: t(4, 4.4, 0.02), vet: t(0.006, 0.0067, 0.01), sol: t(90, 100, 0.01), qnt: t(80, 90, -0.03), fet: t(0.5, 0.55, 0.01), link: t(10, 11, 0.01), render: t(1.5, 1.7, 0.01), gala: t(0.0016, 0.0018, 0.01), hbar: t(0.15, 0.17, 0.01), cspr: t(0.002, 0.0022, 0.01), fil: t(2, 2.2, 0.01), best: t(0.47, 0.52, 0) };
   }
   const out: Partial<Record<PriceCoin, Price>> = {};
   if (!coins.length) return out;
@@ -613,7 +613,7 @@ export async function loadSolAccount(address: string): Promise<SolAccount> {
 /** Von Hand gepflegte Bestände (Börsen ohne Abruf, z. B. Bitpanda): Kürzel → Kurs-Kürzel */
 export const MANUAL_SYMBOLS: Record<string, PriceCoin> = {
   BTC: 'btc', ETH: 'eth', XRP: 'xrp', ADA: 'ada', ALGO: 'algo', ZEC: 'zec', ATOM: 'atom', XLM: 'xlm', LTC: 'ltc', DOT: 'dot',
-  VET: 'vet', SOL: 'sol', QNT: 'qnt', FET: 'fet', LINK: 'link', RENDER: 'render', GALA: 'gala', HBAR: 'hbar', CSPR: 'cspr', FIL: 'fil',
+  VET: 'vet', SOL: 'sol', QNT: 'qnt', FET: 'fet', LINK: 'link', RENDER: 'render', GALA: 'gala', HBAR: 'hbar', CSPR: 'cspr', FIL: 'fil', BEST: 'best',
 };
 export const MANUAL_SQL = `select id, symbol, amount::text, label, venue from manual_crypto where deleted_at is null order by created_at`;
 export interface ManualRow { id: string; symbol: string; amount: string; label: string; venue: string | null }
