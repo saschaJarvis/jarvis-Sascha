@@ -2,7 +2,7 @@ import 'server-only';
 import { db } from './repo';
 import type { Session } from './auth';
 import { getFx } from './ext';
-import { coinPrices, loadEthAccount, loadXrpAccount, type Coin } from './wallets';
+import { coinPrices, loadBtcAccount, loadEthAccount, loadXrpAccount, WALLETS_SQL, type Coin } from './wallets';
 import { goldValueUsd, sumParts, toAed, AED_PER_USD } from '@/lib/domain/networth';
 
 const fake = () => process.env.CRYPTO_FAKE === '1' && process.env.AUTH_PROVIDER !== 'supabase';
@@ -47,7 +47,7 @@ export async function loadNetWorth(s: Session): Promise<NetWorth> {
       accounts: await q<AccountRow>(`select a.id, a.name, a.institution, a.currency, a.kind, b.amount_minor::text, b.as_of::text
           from accounts a left join lateral (select amount_minor, as_of from balances where account_id = a.id order by as_of desc, created_at desc limit 1) b on true
           where a.deleted_at is null and not a.is_demo and a.kind <> 'crypto_wallet' order by a.created_at`),
-      wallets: await q<{ chain: Coin; address: string }>(`select chain, address from (select id, 'xrp'::text as chain, address, label, created_at from crypto_wallets where deleted_at is null union all select id, 'eth'::text, address, label, created_at from eth_wallets where deleted_at is null) w`),
+      wallets: await q<{ chain: Coin; address: string }>(WALLETS_SQL),
       gold: await q<GoldRow>(`select id, label, grams::text, purity, form from gold_holdings where deleted_at is null order by created_at`),
     })),
     getFx(),
@@ -60,6 +60,10 @@ export async function loadNetWorth(s: Session): Promise<NetWorth> {
   const chains = [...new Set(rows.wallets.map((w) => w.chain))];
   const [views, prices] = await Promise.all([
     Promise.all(rows.wallets.map(async (w) => {
+      if (w.chain === 'btc') {
+        const a = await loadBtcAccount(w.address);
+        return { error: !!a.error, native: { coin: 'btc' as Coin, amount: a.btc }, stable: 0, tokens: [] as Array<{ symbol: string; amount: number }> };
+      }
       if (w.chain === 'eth') {
         const a = await loadEthAccount(w.address);
         return { error: !!a.error, native: { coin: 'eth' as Coin, amount: a.eth }, stable: a.tokens.reduce((n, t) => n + (Number.isFinite(t.amount) ? t.amount : 0), 0), tokens: a.tokens };

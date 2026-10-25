@@ -1,6 +1,7 @@
 import 'server-only';
 import { DROPS_PER_XRP, toMove, type XrpMove } from '@/lib/crypto/xrp';
 import { balanceOfData, ETH_TOKENS, fromUnits } from '@/lib/crypto/eth';
+import { SATS_PER_BTC } from '@/lib/crypto/btc';
 import { AED_PER_USD } from './ext';
 
 /**
@@ -89,13 +90,19 @@ export async function loadXrpAccount(address: string): Promise<XrpAccount> {
   });
 }
 
-export type Coin = 'xrp' | 'eth';
-const GECKO: Record<Coin, string> = { xrp: 'ripple', eth: 'ethereum' };
-const KRAKEN: Record<Coin, string> = { xrp: 'XRP', eth: 'ETH' };
+export type Coin = 'xrp' | 'eth' | 'btc';
+
+/** Alle Wallets des Nutzers (je Kette eine Tabelle, nur öffentliche Adressen). */
+export const WALLETS_SQL = `select id, chain, address, label, created_at from (
+  select id, 'xrp'::text as chain, address, label, created_at from crypto_wallets where deleted_at is null
+  union all select id, 'eth'::text, address, label, created_at from eth_wallets where deleted_at is null
+  union all select id, 'btc'::text, address, label, created_at from btc_wallets where deleted_at is null) w order by created_at`;
+const GECKO: Record<Coin, string> = { xrp: 'ripple', eth: 'ethereum', btc: 'bitcoin' };
+const KRAKEN: Record<Coin, string> = { xrp: 'XRP', eth: 'ETH', btc: 'XBT' };
 
 /** Kurse: CoinGecko (eine Abfrage für alle), Ausweich Kraken. AED über die feste USD-Bindung. */
-export async function coinPrices(coins: readonly Coin[] = ['xrp', 'eth']): Promise<Partial<Record<Coin, Price>>> {
-  if (fake()) return { xrp: { eur: 2, usd: 2.2, aed: 2.2 * AED_PER_USD, source: 'Test', at: new Date() }, eth: { eur: 3000, usd: 3300, aed: 3300 * AED_PER_USD, source: 'Test', at: new Date() } };
+export async function coinPrices(coins: readonly Coin[] = ['xrp', 'eth', 'btc']): Promise<Partial<Record<Coin, Price>>> {
+  if (fake()) return { xrp: { eur: 2, usd: 2.2, aed: 2.2 * AED_PER_USD, source: 'Test', at: new Date() }, eth: { eur: 3000, usd: 3300, aed: 3300 * AED_PER_USD, source: 'Test', at: new Date() }, btc: { eur: 90000, usd: 100000, aed: 100000 * AED_PER_USD, source: 'Test', at: new Date() } };
   const out: Partial<Record<Coin, Price>> = {};
   if (!coins.length) return out;
   try {
@@ -161,4 +168,40 @@ export async function loadEthAccount(address: string): Promise<EthAccount> {
       return { address, eth: NaN, tokens: [], error: 'Ethereum-Netz gerade nicht erreichbar.' };
     }
   });
+}
+
+// ---------- Bitcoin ----------
+const BTC_APIS = ['https://mempool.space/api', 'https://blockstream.info/api'];
+
+export interface BtcMove { txid: string; date: Date | null; btc: number; confirmed: boolean }
+export interface BtcAccount { address: string; btc: number; pendingBtc: number; txCount: number; moves: BtcMove[]; error?: string }
+
+interface EsploraAddr { chain_stats: { funded_txo_sum: number; spent_txo_sum: number; tx_count: number }; mempool_stats: { funded_txo_sum: number; spent_txo_sum: number } }
+interface EsploraTx { txid: string; status: { confirmed: boolean; block_time?: number }; vin: Array<{ prevout?: { scriptpubkey_address?: string; value: number } }>; vout: Array<{ scriptpubkey_address?: string; value: number }> }
+
+export async function loadBtcAccount(address: string): Promise<BtcAccount> {
+  if (fake()) return { address, btc: 0.25, pendingBtc: 0, txCount: 3, moves: [{ txid: 'TESTBTC', date: new Date(Date.now() - 3 * 86_400_000), btc: 0.25, confirmed: true }] };
+  for (const base of BTC_APIS) {
+    try {
+      const [ar, tr] = await Promise.all([
+        fetch(`${base}/address/${address}`, { next: { revalidate: 120 }, signal: AbortSignal.timeout(6000) }),
+        fetch(`${base}/address/${address}/txs`, { next: { revalidate: 120 }, signal: AbortSignal.timeout(6000) }),
+      ]);
+      if (!ar.ok) continue;
+      const a = (await ar.json()) as EsploraAddr;
+      const txs = tr.ok ? ((await tr.json()) as EsploraTx[]) : [];
+      const moves = txs.slice(0, 15).map((t) => {
+        const inn = t.vout.filter((o) => o.scriptpubkey_address === address).reduce((n, o) => n + o.value, 0);
+        const out = t.vin.filter((i) => i.prevout?.scriptpubkey_address === address).reduce((n, i) => n + (i.prevout?.value ?? 0), 0);
+        return { txid: t.txid, date: t.status.block_time ? new Date(t.status.block_time * 1000) : null, btc: (inn - out) / SATS_PER_BTC, confirmed: t.status.confirmed };
+      });
+      return {
+        address,
+        btc: (a.chain_stats.funded_txo_sum - a.chain_stats.spent_txo_sum) / SATS_PER_BTC,
+        pendingBtc: (a.mempool_stats.funded_txo_sum - a.mempool_stats.spent_txo_sum) / SATS_PER_BTC,
+        txCount: a.chain_stats.tx_count, moves,
+      };
+    } catch (e) { console.error('[btc]', base, (e as Error).message); }
+  }
+  return { address, btc: NaN, pendingBtc: 0, txCount: 0, moves: [], error: 'Bitcoin-Netz gerade nicht erreichbar.' };
 }

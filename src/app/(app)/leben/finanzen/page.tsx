@@ -1,6 +1,6 @@
 import { requireUser } from '@/server/auth';
 import { db } from '@/server/repo';
-import { coinPrices, loadEthAccount, loadXrpAccount, type Coin, type EthAccount, type XrpAccount } from '@/server/wallets';
+import { coinPrices, loadBtcAccount, loadEthAccount, loadXrpAccount, WALLETS_SQL, type BtcAccount, type Coin, type EthAccount, type XrpAccount } from '@/server/wallets';
 import { AED_PER_USD } from '@/lib/domain/networth';
 import { PageTitle, Section } from '@/components/ui';
 import { timeAgo } from '@/lib/news';
@@ -21,13 +21,13 @@ const short = (a: string) => `${a.slice(0, 6)}…${a.slice(-4)}`;
 export default async function FinancePage() {
   const s = await requireUser();
   const wallets = await db(s).run((q) => q<{ id: string; chain: Coin; address: string; label: string }>(
-    `select id, chain, address, label from (select id, 'xrp'::text as chain, address, label, created_at from crypto_wallets where deleted_at is null union all select id, 'eth'::text, address, label, created_at from eth_wallets where deleted_at is null) w order by created_at`));
+    WALLETS_SQL));
   const [views, prices, nw] = await Promise.all([
-    Promise.all(wallets.map((w): Promise<XrpAccount | EthAccount> => (w.chain === 'eth' ? loadEthAccount(w.address) : loadXrpAccount(w.address)))),
+    Promise.all(wallets.map((w): Promise<XrpAccount | EthAccount | BtcAccount> => (w.chain === 'eth' ? loadEthAccount(w.address) : w.chain === 'btc' ? loadBtcAccount(w.address) : loadXrpAccount(w.address)))),
     coinPrices([...new Set(wallets.map((w) => w.chain))]),
     loadNetWorth(s),
   ]);
-  const EXPLORER: Record<Coin, (a: string) => string> = { xrp: (a) => `https://livenet.xrpl.org/accounts/${a}`, eth: (a) => `https://etherscan.io/address/${a}` };
+  const EXPLORER: Record<Coin, (a: string) => string> = { xrp: (a) => `https://livenet.xrpl.org/accounts/${a}`, eth: (a) => `https://etherscan.io/address/${a}`, btc: (a) => `https://mempool.space/address/${a}` };
   const now = new Date();
 
   return (
@@ -100,7 +100,7 @@ export default async function FinancePage() {
           <div className="card mb-3 grid gap-1">
             <p className="eyebrow">Krypto gesamt</p>
             <p className="text-2xl font-bold">{nf(nw.crypto.aed, 0)} AED</p>
-            <p className="text-muted">{nw.eurAed ? `≈ ${nf(nw.crypto.aed / nw.eurAed, 0)} € · ` : ''}{Object.entries(nw.crypto.holdings).filter(([, v]) => v).map(([k, v]) => `${nf(v ?? 0, k === 'ETH' ? 4 : 2)} ${k}`).join(' · ')}</p>
+            <p className="text-muted">{nw.eurAed ? `≈ ${nf(nw.crypto.aed / nw.eurAed, 0)} € · ` : ''}{Object.entries(nw.crypto.holdings).filter(([, v]) => v).map(([k, v]) => `${nf(v ?? 0, k === 'BTC' ? 8 : k === 'ETH' ? 4 : 2)} ${k}`).join(' · ')}</p>
             {nw.crypto.error && <p className="text-sm text-warn">Ein Teil ist gerade ohne Kurs oder Netz – nicht mitgezählt.</p>}
           </div>
         )}
@@ -112,7 +112,8 @@ export default async function FinancePage() {
             const sym = w.chain.toUpperCase();
             const x = w.chain === 'xrp' ? (v as XrpAccount) : null;
             const e = w.chain === 'eth' ? (v as EthAccount) : null;
-            const amount = x ? x.xrp : e!.eth;
+            const b = w.chain === 'btc' ? (v as BtcAccount) : null;
+            const amount = x ? x.xrp : e ? e.eth : b!.btc;
             const stableUsd = e ? e.tokens.reduce((n, t) => n + (Number.isFinite(t.amount) ? t.amount : 0), 0) : 0;
             return (
               <li key={w.id} className="card grid gap-2">
@@ -125,7 +126,7 @@ export default async function FinancePage() {
                     {v.error ? <p className="text-sm text-warn">{v.error}</p>
                       : x && !x.activated ? <p className="text-sm text-muted">Noch nicht aktiviert (0 XRP)</p>
                       : <>
-                        <p className="text-lg font-bold">{nf(amount, w.chain === 'eth' ? 4 : 2)} {sym}</p>
+                        <p className="text-lg font-bold">{nf(amount, w.chain === 'xrp' ? 2 : w.chain === 'eth' ? 4 : 8)} {sym}</p>
                         {p && <p className="text-sm text-muted">≈ {nf(amount * p.eur + (nw.eurAed ? (stableUsd * AED_PER_USD) / nw.eurAed : 0))} €</p>}
                       </>}
                   </div>
@@ -134,6 +135,26 @@ export default async function FinancePage() {
                   <p className="text-sm">{e.tokens.map((t) => Number.isFinite(t.amount) ? `+ ${nf(t.amount, 2)} ${t.symbol}` : `${t.symbol}: nicht abrufbar`).join(' · ')}</p>
                 )}
                 {e && !e.error && <p className="text-xs text-muted">Gezählt: ETH, USDT und USDC. Andere Tokens/NFTs siehst du über den Etherscan-Link.</p>}
+                {b && !b.error && (
+                  <>
+                    {b.pendingBtc !== 0 && <p className="text-xs text-warn">Unbestätigt: {b.pendingBtc > 0 ? '+' : ''}{nf(b.pendingBtc, 8)} BTC</p>}
+                    <p className="text-xs text-muted">Zeigt nur diese eine Adresse. Ledger Live verteilt Bitcoin oft auf mehrere Adressen – stimmt der Betrag nicht mit Ledger Live überein, füge die weiteren Adressen hinzu.</p>
+                    {b.moves.length > 0 && (
+                      <details>
+                        <summary className="cursor-pointer text-sm text-sea">Letzte Bewegungen ({b.moves.length})</summary>
+                        <ul className="mt-2 grid gap-1 text-sm">
+                          {b.moves.map((m) => (
+                            <li key={m.txid} className="flex items-baseline justify-between gap-2 border-b border-line pb-1 last:border-0">
+                              <span className={m.btc > 0 ? 'text-good' : m.btc < 0 ? 'text-bad' : 'text-muted'}>{m.btc > 0 ? '↓ Eingang' : m.btc < 0 ? '↑ Ausgang' : '↔'}{!m.confirmed && ' (unbestätigt)'}</span>
+                              <span className="shrink-0 text-right">{m.btc > 0 ? '+' : m.btc < 0 ? '−' : ''}{nf(Math.abs(m.btc), 8)} BTC
+                                <span className="block text-xs text-muted" suppressHydrationWarning>{m.date ? timeAgo(m.date, now) : 'ausstehend'}</span></span>
+                            </li>
+                          ))}
+                        </ul>
+                      </details>
+                    )}
+                  </>
+                )}
                 {x && x.reserveXrp != null && x.activated && !x.error && (
                   <p className="text-xs text-muted">Davon {nf(x.reserveXrp, 1)} XRP als Mindestreserve des XRP Ledgers gebunden.</p>
                 )}
@@ -168,7 +189,7 @@ export default async function FinancePage() {
         </ul>
 
         <div className="mt-3">
-          <ConnectSection initialOpen={wallets.length === 0} title="+ Wallet-Adresse hinzufügen (XRP / ETH)">
+          <ConnectSection initialOpen={wallets.length === 0} title="+ Wallet-Adresse hinzufügen (BTC / ETH / XRP)">
             <div className="mt-3"><AddWalletForm /></div>
           </ConnectSection>
         </div>

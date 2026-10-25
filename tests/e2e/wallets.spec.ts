@@ -8,7 +8,7 @@ test('Krypto nur ansehen: Seed wird abgewiesen, Tippfehler erkannt, Adresse zeig
   await page.goto('/leben/finanzen');
   await expect(page.getByText(/kann damit nichts versenden/)).toBeVisible();
 
-  const addr = page.getByLabel('Öffentliche Adresse (XRP oder Ethereum)');
+  const addr = page.getByLabel('Öffentliche Adresse (BTC, ETH oder XRP)');
   await addr.fill('abandon ability able about above absent absorb abstract absurd abuse access accident');
   await page.getByRole('button', { name: 'Adresse hinzufügen' }).click();
   await expect(page.getByText(/NICHT gespeichert/)).toBeVisible();
@@ -27,7 +27,7 @@ test('Krypto nur ansehen: Seed wird abgewiesen, Tippfehler erkannt, Adresse zeig
   await expect(page.getByText('+250,00 XRP')).toBeVisible();
 
   // Ethereum: privater Schlüssel wird abgewiesen, Adresse mit Prüfsumme angenommen, Art automatisch erkannt
-  await page.getByText('+ Wallet-Adresse hinzufügen (XRP / ETH)').click();
+  await page.getByText('+ Wallet-Adresse hinzufügen (BTC / ETH / XRP)').click();
   await addr.fill('0x' + '4c0883a69102937d6231471b5dbb6204fe5129617082792ae468d01a3f362318');
   await page.getByRole('button', { name: 'Adresse hinzufügen' }).click();
   await expect(page.getByText(/NICHT gespeichert/)).toBeVisible();
@@ -41,4 +41,19 @@ test('Krypto nur ansehen: Seed wird abgewiesen, Tippfehler erkannt, Adresse zeig
   await expect(page.getByText('1,5000 ETH', { exact: true })).toBeVisible();
   await expect(page.getByText('+ 500,00 USDC')).toBeVisible();
   await expect(page.getByRole('link', { name: /0x11A4…7886/ })).toHaveAttribute('href', /etherscan\.io\/address\/0x11A4/);
+
+  // Bitcoin: WIF-Privatschlüssel abgewiesen, Prüfsumme geprüft, P2SH-Adresse angenommen
+  await page.getByText('+ Wallet-Adresse hinzufügen (BTC / ETH / XRP)').click();
+  await addr.fill('5HueCGU8rMjxEXxiPuD5BDku4MkFqeZyd4dZ1jvhTVqvbTLvyTJ');
+  await page.getByRole('button', { name: 'Adresse hinzufügen' }).click();
+  await expect(page.getByText(/NICHT gespeichert/)).toBeVisible();
+  await addr.fill('33ewns94qWVhzfPVwWTuHh5zNNTKihEKUV');
+  await page.getByRole('button', { name: 'Adresse hinzufügen' }).click();
+  await expect(page.getByText(/Bitcoin-Adresse ist nicht gültig/)).toBeVisible();
+  await addr.fill('33ewns94qWVhzfPVwWTuHh5zNNTKihEKUU');
+  await page.getByRole('button', { name: 'Adresse hinzufügen' }).click();
+  await expect(page.getByText(/„Ledger BTC“ hinzugefügt/)).toBeVisible();
+  await page.reload();
+  await expect(page.getByText('0,25000000 BTC', { exact: true })).toBeVisible();
+  await expect(page.getByRole('link', { name: /33ewns…EKUU/ })).toHaveAttribute('href', /mempool\.space\/address\/33ewns/);
 });
