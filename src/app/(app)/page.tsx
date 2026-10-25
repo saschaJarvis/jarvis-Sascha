@@ -19,6 +19,8 @@ import { holidaysBetween } from '@/lib/holidays';
 import { observancesBetween } from '@/lib/special-days';
 import { loadExternalEvents } from '@/server/calendars';
 import { ensureBillTasks } from '@/server/bills';
+import { loadNetWorth } from '@/server/networth';
+import { NetWorthBlock } from '@/components/net-worth';
 import { DOMAIN_LABEL as DOMAIN } from '@/lib/labels';
 import { claudeAvailable, AI_CONSENT } from '@/server/claude';
 
@@ -38,7 +40,7 @@ const hhmm = (d: Date, tz: string) => new Intl.DateTimeFormat('de-DE', { timeZon
 export default async function BridgePage() {
   const s = await requireUser();
   await ensureBillTasks(s);
-  const [profile, open, done, closedCal, extra, fx, ext] = await Promise.all([
+  const [profile, open, done, closedCal, extra, fx, ext, nw] = await Promise.all([
     db(s).profile(), db(s).openTasks(), db(s).recentlyDone(),
     db(s).doneInRange(new Date(Date.now() - 8 * 86_400_000), new Date(Date.now() + 9 * 7 * 86_400_000)),
     db(s).run(async (q) => {
@@ -63,6 +65,7 @@ export default async function BridgePage() {
     }),
     getFx(),
     loadExternalEvents(s, new Date(Date.now() - 8 * 86_400_000), new Date(Date.now() + 9 * 7 * 86_400_000)),
+    loadNetWorth(s),
   ]);
   const weather = await getWeather(profile.timezone);
 
@@ -274,14 +277,8 @@ export default async function BridgePage() {
 
         {/* ───────────── RECHTS ───────────── */}
         <div className="order-3 grid min-w-0 grid-cols-1 content-start gap-4">
-          <Panel n="04" title="Geld" href="/leben/finanzen" aside={extra.stats.accounts ? `${extra.stats.accounts} Konten` : 'nicht verbunden'}>
-            <div className="grid grid-cols-2 gap-3">
-              <Metric label="Kontostand" value="—" sub={extra.stats.accounts ? 'Import ausstehend' : 'keine Kontodaten'} tone="muted" />
-              <Metric label="1 € in AED" value={fx ? fx.eurAed.toLocaleString('de-DE', { minimumFractionDigits: 3, maximumFractionDigits: 3 }) : '—'} sub={fx ? `EZB ${fx.date}` : 'Kurs nicht abrufbar'} tone="sea" />
-              <Metric label="Buchungen" value={extra.stats.transactions} sub="importiert" tone="muted" />
-              <Metric label="Offene Rechnungen" value="—" sub="noch keine Quelle" tone="muted" />
-            </div>
-            <Empty action={{ href: '/leben/finanzen', label: 'Finanzen ansehen' }}>Liquidität erscheint nach dem ersten Kontoauszug</Empty>
+          <Panel n="04" title="Finanzen" href="/leben/finanzen" aside={fx ? `1 € = ${fx.eurAed.toLocaleString('de-DE', { minimumFractionDigits: 3, maximumFractionDigits: 3 })} AED` : 'Kurs fehlt'}>
+            <NetWorthBlock nw={nw} compact />
           </Panel>
 
           <Panel n="05" title="Dubai" href="/leben/dubai" aside={daysToMove !== null ? `T – ${daysToMove}` : 'Umzugsdatum offen'}>
