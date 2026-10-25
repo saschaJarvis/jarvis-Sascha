@@ -7,6 +7,7 @@ import { UATOM_PER_ATOM } from '@/lib/crypto/atom';
 import { XLM_STABLES } from '@/lib/crypto/xlm';
 import { LITOSHI_PER_LTC } from '@/lib/crypto/ltc';
 import { isDescriptor } from '@/lib/crypto/xpub';
+import { decodeAccountInfo, dotPublicKey, PLANCK_PER_DOT, systemAccountKey } from '@/lib/crypto/dot';
 import { blockbookLoad, type BbAccount } from './blockbook';
 import { LOVELACE_PER_ADA, stakeAddressOf } from '@/lib/crypto/ada';
 import { ALGO_STABLES, MICRO_PER_ALGO } from '@/lib/crypto/algo';
@@ -99,7 +100,7 @@ export async function loadXrpAccount(address: string): Promise<XrpAccount> {
   });
 }
 
-export type Coin = 'xrp' | 'eth' | 'btc' | 'ada' | 'algo' | 'zec' | 'atom' | 'xlm' | 'ltc';
+export type Coin = 'xrp' | 'eth' | 'btc' | 'ada' | 'algo' | 'zec' | 'atom' | 'xlm' | 'ltc' | 'dot';
 /** Kurs-Kürzel: Ketten + Tokens mit eigenem Kurs (z. B. Quant auf Ethereum) */
 export type PriceCoin = Coin | 'qnt' | 'fet';
 
@@ -113,10 +114,11 @@ export const WALLETS_SQL = `select id, chain, address, label, created_at from (
   union all select id, 'zec'::text, address, label, created_at from zec_wallets where deleted_at is null
   union all select id, 'atom'::text, address, label, created_at from atom_wallets where deleted_at is null
   union all select id, 'xlm'::text, address, label, created_at from xlm_wallets where deleted_at is null
-  union all select id, 'ltc'::text, address, label, created_at from ltc_wallets where deleted_at is null) w order by created_at`;
-const GECKO: Record<PriceCoin, string> = { xrp: 'ripple', eth: 'ethereum', btc: 'bitcoin', ada: 'cardano', algo: 'algorand', zec: 'zcash', atom: 'cosmos', xlm: 'stellar', ltc: 'litecoin', qnt: 'quant-network', fet: 'fetch-ai' };
+  union all select id, 'ltc'::text, address, label, created_at from ltc_wallets where deleted_at is null
+  union all select id, 'dot'::text, address, label, created_at from dot_wallets where deleted_at is null) w order by created_at`;
+const GECKO: Record<PriceCoin, string> = { xrp: 'ripple', eth: 'ethereum', btc: 'bitcoin', ada: 'cardano', algo: 'algorand', zec: 'zcash', atom: 'cosmos', xlm: 'stellar', ltc: 'litecoin', dot: 'polkadot', qnt: 'quant-network', fet: 'fetch-ai' };
 
-const KRAKEN_PAIR: Record<PriceCoin, string> = { btc: 'XBT', eth: 'ETH', xrp: 'XRP', ada: 'ADA', algo: 'ALGO', zec: 'ZEC', atom: 'ATOM', xlm: 'XLM', ltc: 'LTC', qnt: 'QNT', fet: 'FET' };
+const KRAKEN_PAIR: Record<PriceCoin, string> = { btc: 'XBT', eth: 'ETH', xrp: 'XRP', ada: 'ADA', algo: 'ALGO', zec: 'ZEC', atom: 'ATOM', xlm: 'XLM', ltc: 'LTC', dot: 'DOT', qnt: 'QNT', fet: 'FET' };
 const PRICE_TTL = 20; // Sekunden – „quasi Echtzeit“; Kraken erlaubt ~1 Abfrage/s je IP
 
 /**
@@ -124,10 +126,10 @@ const PRICE_TTL = 20; // Sekunden – „quasi Echtzeit“; Kraken erlaubt ~1 Ab
  * letzter Handelspreis in EUR und USD, dazu die 24-h-Veränderung aus Stundenkerzen.
  * Ausweich: CoinGecko (Durchschnitt mehrerer Börsen, inkl. 24-h-Änderung). AED über die USD-Bindung.
  */
-export async function coinPrices(coins: readonly PriceCoin[] = ['xrp', 'eth', 'btc', 'ada', 'algo', 'zec', 'atom', 'xlm', 'ltc', 'qnt', 'fet']): Promise<Partial<Record<PriceCoin, Price>>> {
+export async function coinPrices(coins: readonly PriceCoin[] = ['xrp', 'eth', 'btc', 'ada', 'algo', 'zec', 'atom', 'xlm', 'ltc', 'dot', 'qnt', 'fet']): Promise<Partial<Record<PriceCoin, Price>>> {
   if (fake()) {
     const t = (eur: number, usd: number, change24h: number) => ({ eur, usd, aed: usd * AED_PER_USD, source: 'Test', at: new Date(), change24h });
-    return { xrp: t(2, 2.2, 0.1), eth: t(3000, 3300, -0.02), btc: t(90000, 100000, 0.01), ada: t(0.6, 0.7, 0), algo: t(0.2, 0.22, 0.05), zec: t(40, 44, 0.02), atom: t(4, 4.4, -0.01), xlm: t(0.3, 0.33, 0.01), ltc: t(80, 88, 0.01), qnt: t(80, 90, -0.03), fet: t(0.5, 0.55, 0.01) };
+    return { xrp: t(2, 2.2, 0.1), eth: t(3000, 3300, -0.02), btc: t(90000, 100000, 0.01), ada: t(0.6, 0.7, 0), algo: t(0.2, 0.22, 0.05), zec: t(40, 44, 0.02), atom: t(4, 4.4, -0.01), xlm: t(0.3, 0.33, 0.01), ltc: t(80, 88, 0.01), dot: t(4, 4.4, 0.02), qnt: t(80, 90, -0.03), fet: t(0.5, 0.55, 0.01) };
   }
   const out: Partial<Record<PriceCoin, Price>> = {};
   if (!coins.length) return out;
@@ -487,6 +489,48 @@ export async function loadLtcAccount(address: string): Promise<LtcAccount> {
     } catch (e) {
       for (const x of (e as AggregateError).errors ?? [e]) console.error('[ltc]', (x as Error).message);
       return { address, ltc: NaN, pendingLtc: 0, txCount: 0, moves: [], error: 'Litecoin-Netz gerade nicht erreichbar.' };
+    }
+  });
+}
+
+// ---------- Polkadot (DOT) ----------
+// Seit der „Asset Hub Migration“ liegen Kontostände und Staking auf Polkadot Asset Hub; die Relay-Chain wird
+// trotzdem mitgezählt (falls dort noch etwas liegt). Abfrage: System.Account per state_getStorage (öffentliches RPC).
+export interface DotAccount { address: string; dot: number; free: number; reserved: number; frozen: number; error?: string }
+const DOT_CHAINS: Array<{ name: string; rpc: string[] }> = [
+  { name: 'Asset Hub', rpc: ['https://polkadot-asset-hub-rpc.polkadot.io', 'https://asset-hub-polkadot-rpc.dwellir.com'] },
+  { name: 'Relay', rpc: ['https://rpc.polkadot.io', 'https://polkadot-rpc.publicnode.com'] },
+];
+
+async function dotStorage(urls: string[], key: string): Promise<string | null> {
+  let last = 'nicht erreichbar';
+  for (const url of urls) {
+    try {
+      const r = await fetch(url, { method: 'POST', headers: { 'content-type': 'application/json' }, cache: 'no-store',
+        body: JSON.stringify({ id: 1, jsonrpc: '2.0', method: 'state_getStorage', params: [key] }), signal: AbortSignal.timeout(8000) });
+      if (!r.ok) { last = `HTTP ${r.status}`; continue; }
+      const j = (await r.json()) as { result?: string | null; error?: { message?: string } };
+      if (j.error) { last = j.error.message ?? 'Fehler'; continue; }
+      return j.result ?? null;
+    } catch (e) { last = (e as Error).message; }
+  }
+  throw new Error(last);
+}
+
+export async function loadDotAccount(address: string): Promise<DotAccount> {
+  if (fake()) return { address, dot: 250, free: 250, reserved: 0, frozen: 100 };
+  return cached(`dot:${address}`, 120_000, async () => {
+    const pub = dotPublicKey(address);
+    if (!pub) return { address, dot: NaN, free: 0, reserved: 0, frozen: 0, error: 'Ungültige Polkadot-Adresse.' };
+    const key = systemAccountKey(pub);
+    try {
+      const infos = await Promise.all(DOT_CHAINS.map(async (c) => decodeAccountInfo(await dotStorage(c.rpc, key))));
+      const sum = (k: 'free' | 'reserved' | 'frozen') => infos.reduce((n, i) => n + i[k], 0n);
+      const free = Number(sum('free')) / PLANCK_PER_DOT, reserved = Number(sum('reserved')) / PLANCK_PER_DOT, frozen = Number(sum('frozen')) / PLANCK_PER_DOT;
+      return { address, dot: free + reserved, free, reserved, frozen };
+    } catch (e) {
+      console.error('[dot]', (e as Error).message);
+      return { address, dot: NaN, free: 0, reserved: 0, frozen: 0, error: 'Polkadot-Netz gerade nicht erreichbar.' };
     }
   });
 }
