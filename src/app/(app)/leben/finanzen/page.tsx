@@ -32,7 +32,7 @@ export default async function FinancePage() {
     WALLETS_SQL));
   const [views, prices, nw] = await Promise.all([
     Promise.all(wallets.map((w): Promise<XrpAccount | EthAccount | BtcAccount | AdaAccount | AlgoAccount | ZecAccount | AtomAccount | XlmAccount | LtcAccount | DotAccount | VetAccount> => (w.chain === 'vet' ? loadVetAccount(w.address) : w.chain === 'dot' ? loadDotAccount(w.address) : w.chain === 'ltc' ? loadLtcAccount(w.address) : w.chain === 'xlm' ? loadXlmAccount(w.address) : w.chain === 'atom' ? loadAtomAccount(w.address) : w.chain === 'zec' ? loadZecAccount(w.address) : w.chain === 'eth' ? loadEthAccount(w.address) : w.chain === 'btc' ? loadBtcAccount(w.address) : w.chain === 'ada' ? loadAdaAccount(w.address) : w.chain === 'algo' ? loadAlgoAccount(w.address) : loadXrpAccount(w.address)))),
-    coinPrices([...new Set<PriceCoin>([...wallets.map((w) => w.chain), ...(wallets.some((w) => w.chain === 'eth') ? ['qnt' as const, 'fet' as const] : [])])]),
+    coinPrices([...new Set<PriceCoin>([...wallets.map((w) => w.chain), ...(wallets.some((w) => w.chain === 'eth') ? ['qnt' as const, 'fet' as const, 'link' as const] : [])])]),
     loadNetWorth(s),
   ]);
   const statements = await loadStatements(s);
@@ -110,7 +110,7 @@ export default async function FinancePage() {
           <div className="card mb-3 grid gap-1">
             <p className="eyebrow">Krypto gesamt</p>
             <p className="text-2xl font-bold">{nf(nw.crypto.aed, 0)} AED</p>
-            <p className="text-muted">{nw.eurAed ? `≈ ${nf(nw.crypto.aed / nw.eurAed, 0)} € · ` : ''}{Object.entries(nw.crypto.holdings).filter(([, v]) => v != null).sort(([a], [b]) => ['BTC', 'ETH', 'LTC', 'XRP', 'ADA', 'ALGO', 'ZEC', 'ATOM', 'XLM', 'DOT', 'VET', 'QNT', 'FET', 'USDT', 'USDC'].indexOf(a) - ['BTC', 'ETH', 'LTC', 'XRP', 'ADA', 'ALGO', 'ZEC', 'ATOM', 'XLM', 'DOT', 'VET', 'QNT', 'FET', 'USDT', 'USDC'].indexOf(b)).map(([k, v]) => `${nf(v ?? 0, k === 'BTC' ? 8 : k === 'ETH' ? 4 : 2)} ${k}`).join(' · ')}</p>
+            <p className="text-muted">{nw.eurAed ? `≈ ${nf(nw.crypto.aed / nw.eurAed, 0)} € · ` : ''}{Object.entries(nw.crypto.holdings).filter(([, v]) => v != null).sort(([a], [b]) => ['BTC', 'ETH', 'LTC', 'XRP', 'ADA', 'ALGO', 'ZEC', 'ATOM', 'XLM', 'DOT', 'VET', 'QNT', 'FET', 'LINK', 'USDT', 'USDC'].indexOf(a) - ['BTC', 'ETH', 'LTC', 'XRP', 'ADA', 'ALGO', 'ZEC', 'ATOM', 'XLM', 'DOT', 'VET', 'QNT', 'FET', 'LINK', 'USDT', 'USDC'].indexOf(b)).map(([k, v]) => `${nf(v ?? 0, k === 'BTC' ? 8 : k === 'ETH' ? 4 : 2)} ${k}`).join(' · ')}</p>
             {nw.crypto.error && <p className="text-sm text-warn">Ein Teil ist gerade ohne Kurs oder Netz – nicht mitgezählt.</p>}
             {nw.crypto.change && <div className="mt-1"><CryptoChange ch={nw.crypto.change} asOf={nw.crypto.asOf} label="24 h" /></div>}
             {nw.crypto.coins.length > 0 && (
@@ -180,7 +180,7 @@ export default async function FinancePage() {
                 {e && e.tokens.length > 0 && !e.error && (
                   <p className="text-sm">{e.tokens.map((t) => Number.isFinite(t.amount) ? `+ ${nf(t.amount, t.price === 'usd' ? 2 : 4)} ${t.symbol}` : `${t.symbol}: nicht abrufbar`).join(' · ')}</p>
                 )}
-                {e && !e.error && <p className="text-xs text-muted">Gezählt: ETH, Quant (QNT), Fetch.ai (FET), USDT und USDC. Andere Tokens/NFTs siehst du über den Etherscan-Link.</p>}
+                {e && !e.error && <p className="text-xs text-muted">Gezählt: ETH, Quant (QNT), Fetch.ai (FET), Chainlink (LINK), USDT und USDC. Andere Tokens/NFTs siehst du über den Etherscan-Link.</p>}
                 {g && !g.error && (
                   <p className="text-xs text-muted">
                     {g.tokens.length ? `${g.tokens.map((t) => `+ ${nf(t.amount, 2)} ${t.symbol}`).join(' · ')} · ` : ''}Davon {nf(g.minBalance, 2)} ALGO als Mindestguthaben gebunden.{g.online ? ' Nimmt am Konsens teil (Staking).' : ''}
