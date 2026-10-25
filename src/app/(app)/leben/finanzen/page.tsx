@@ -1,6 +1,6 @@
 import { requireUser } from '@/server/auth';
 import { db } from '@/server/repo';
-import { coinPrices, loadAdaAccount, loadAlgoAccount, loadBtcAccount, loadEthAccount, loadXrpAccount, loadZecAccount, loadAtomAccount, loadXlmAccount, loadLtcAccount, loadDotAccount, WALLETS_SQL, type AdaAccount, type AlgoAccount, type BtcAccount, type Coin, type EthAccount, type PriceCoin, type XrpAccount, type ZecAccount, type AtomAccount, type XlmAccount, type LtcAccount, type DotAccount } from '@/server/wallets';
+import { coinPrices, loadAdaAccount, loadAlgoAccount, loadBtcAccount, loadEthAccount, loadXrpAccount, loadZecAccount, loadAtomAccount, loadXlmAccount, loadLtcAccount, loadDotAccount, loadVetAccount, WALLETS_SQL, type AdaAccount, type AlgoAccount, type BtcAccount, type Coin, type EthAccount, type PriceCoin, type XrpAccount, type ZecAccount, type AtomAccount, type XlmAccount, type LtcAccount, type DotAccount, type VetAccount } from '@/server/wallets';
 import { AED_PER_USD } from '@/lib/domain/networth';
 import { PageTitle, Section } from '@/components/ui';
 import { timeAgo } from '@/lib/news';
@@ -21,7 +21,7 @@ const FORM: Record<string, string> = { bar: 'Barren', coin: 'Münze', jewelry: '
 export const dynamic = 'force-dynamic';
 
 const nf = (n: number, d = 2) => n.toLocaleString('de-DE', { minimumFractionDigits: d, maximumFractionDigits: d });
-const DEC: Record<Coin, number> = { xrp: 2, eth: 4, btc: 8, ada: 2, algo: 2, zec: 4, atom: 4, xlm: 2, ltc: 4, dot: 2 };
+const DEC: Record<Coin, number> = { xrp: 2, eth: 4, btc: 8, ada: 2, algo: 2, zec: 4, atom: 4, xlm: 2, ltc: 4, dot: 2, vet: 0 };
 const short = (a: string) => `${a.slice(0, 6)}…${a.slice(-4)}`;
 
 export default async function FinancePage() {
@@ -31,12 +31,12 @@ export default async function FinancePage() {
   const wallets = await db(s).run((q) => q<{ id: string; chain: Coin; address: string; label: string }>(
     WALLETS_SQL));
   const [views, prices, nw] = await Promise.all([
-    Promise.all(wallets.map((w): Promise<XrpAccount | EthAccount | BtcAccount | AdaAccount | AlgoAccount | ZecAccount | AtomAccount | XlmAccount | LtcAccount | DotAccount> => (w.chain === 'dot' ? loadDotAccount(w.address) : w.chain === 'ltc' ? loadLtcAccount(w.address) : w.chain === 'xlm' ? loadXlmAccount(w.address) : w.chain === 'atom' ? loadAtomAccount(w.address) : w.chain === 'zec' ? loadZecAccount(w.address) : w.chain === 'eth' ? loadEthAccount(w.address) : w.chain === 'btc' ? loadBtcAccount(w.address) : w.chain === 'ada' ? loadAdaAccount(w.address) : w.chain === 'algo' ? loadAlgoAccount(w.address) : loadXrpAccount(w.address)))),
+    Promise.all(wallets.map((w): Promise<XrpAccount | EthAccount | BtcAccount | AdaAccount | AlgoAccount | ZecAccount | AtomAccount | XlmAccount | LtcAccount | DotAccount | VetAccount> => (w.chain === 'vet' ? loadVetAccount(w.address) : w.chain === 'dot' ? loadDotAccount(w.address) : w.chain === 'ltc' ? loadLtcAccount(w.address) : w.chain === 'xlm' ? loadXlmAccount(w.address) : w.chain === 'atom' ? loadAtomAccount(w.address) : w.chain === 'zec' ? loadZecAccount(w.address) : w.chain === 'eth' ? loadEthAccount(w.address) : w.chain === 'btc' ? loadBtcAccount(w.address) : w.chain === 'ada' ? loadAdaAccount(w.address) : w.chain === 'algo' ? loadAlgoAccount(w.address) : loadXrpAccount(w.address)))),
     coinPrices([...new Set<PriceCoin>([...wallets.map((w) => w.chain), ...(wallets.some((w) => w.chain === 'eth') ? ['qnt' as const, 'fet' as const] : [])])]),
     loadNetWorth(s),
   ]);
   const statements = await loadStatements(s);
-  const EXPLORER: Record<Coin, (a: string) => string> = { xrp: (a) => `https://livenet.xrpl.org/accounts/${a}`, eth: (a) => `https://etherscan.io/address/${a}`, btc: (a) => (isDescriptor(a) ? `https://btc1.trezor.io/xpub/${encodeURIComponent(a)}` : `https://mempool.space/address/${a}`), ada: (a) => `https://cardanoscan.io/address/${a}`, algo: (a) => `https://allo.info/account/${a}`, zec: (a) => (isDescriptor(a) ? `https://blockbook.zec.zelcore.io/xpub/${encodeURIComponent(a)}` : `https://blockchair.com/zcash/address/${a}`), atom: (a) => `https://www.mintscan.io/cosmos/address/${a}`, xlm: (a) => `https://stellar.expert/explorer/public/account/${a}`, dot: (a) => `https://assethub-polkadot.subscan.io/account/${a}`, ltc: (a) => (isDescriptor(a) ? `https://litecoinblockexplorer.net/xpub/${encodeURIComponent(a)}` : `https://litecoinspace.org/address/${a}`) };
+  const EXPLORER: Record<Coin, (a: string) => string> = { xrp: (a) => `https://livenet.xrpl.org/accounts/${a}`, eth: (a) => `https://etherscan.io/address/${a}`, btc: (a) => (isDescriptor(a) ? `https://btc1.trezor.io/xpub/${encodeURIComponent(a)}` : `https://mempool.space/address/${a}`), ada: (a) => `https://cardanoscan.io/address/${a}`, algo: (a) => `https://allo.info/account/${a}`, zec: (a) => (isDescriptor(a) ? `https://blockbook.zec.zelcore.io/xpub/${encodeURIComponent(a)}` : `https://blockchair.com/zcash/address/${a}`), atom: (a) => `https://www.mintscan.io/cosmos/address/${a}`, xlm: (a) => `https://stellar.expert/explorer/public/account/${a}`, dot: (a) => `https://assethub-polkadot.subscan.io/account/${a}`, vet: (a) => `https://vechainstats.com/account/${a}`, ltc: (a) => (isDescriptor(a) ? `https://litecoinblockexplorer.net/xpub/${encodeURIComponent(a)}` : `https://litecoinspace.org/address/${a}`) };
   const now = new Date();
 
   return (
@@ -110,7 +110,7 @@ export default async function FinancePage() {
           <div className="card mb-3 grid gap-1">
             <p className="eyebrow">Krypto gesamt</p>
             <p className="text-2xl font-bold">{nf(nw.crypto.aed, 0)} AED</p>
-            <p className="text-muted">{nw.eurAed ? `≈ ${nf(nw.crypto.aed / nw.eurAed, 0)} € · ` : ''}{Object.entries(nw.crypto.holdings).filter(([, v]) => v != null).sort(([a], [b]) => ['BTC', 'ETH', 'LTC', 'XRP', 'ADA', 'ALGO', 'ZEC', 'ATOM', 'XLM', 'DOT', 'QNT', 'FET', 'USDT', 'USDC'].indexOf(a) - ['BTC', 'ETH', 'LTC', 'XRP', 'ADA', 'ALGO', 'ZEC', 'ATOM', 'XLM', 'DOT', 'QNT', 'FET', 'USDT', 'USDC'].indexOf(b)).map(([k, v]) => `${nf(v ?? 0, k === 'BTC' ? 8 : k === 'ETH' ? 4 : 2)} ${k}`).join(' · ')}</p>
+            <p className="text-muted">{nw.eurAed ? `≈ ${nf(nw.crypto.aed / nw.eurAed, 0)} € · ` : ''}{Object.entries(nw.crypto.holdings).filter(([, v]) => v != null).sort(([a], [b]) => ['BTC', 'ETH', 'LTC', 'XRP', 'ADA', 'ALGO', 'ZEC', 'ATOM', 'XLM', 'DOT', 'VET', 'QNT', 'FET', 'USDT', 'USDC'].indexOf(a) - ['BTC', 'ETH', 'LTC', 'XRP', 'ADA', 'ALGO', 'ZEC', 'ATOM', 'XLM', 'DOT', 'VET', 'QNT', 'FET', 'USDT', 'USDC'].indexOf(b)).map(([k, v]) => `${nf(v ?? 0, k === 'BTC' ? 8 : k === 'ETH' ? 4 : 2)} ${k}`).join(' · ')}</p>
             {nw.crypto.error && <p className="text-sm text-warn">Ein Teil ist gerade ohne Kurs oder Netz – nicht mitgezählt.</p>}
             {nw.crypto.change && <div className="mt-1"><CryptoChange ch={nw.crypto.change} asOf={nw.crypto.asOf} label="24 h" /></div>}
             {nw.crypto.coins.length > 0 && (
@@ -157,7 +157,8 @@ export default async function FinancePage() {
             const st = w.chain === 'xlm' ? (v as XlmAccount) : null;
             const lt = w.chain === 'ltc' ? (v as LtcAccount) : null;
             const dt = w.chain === 'dot' ? (v as DotAccount) : null;
-            const amount = x ? x.xrp : e ? e.eth : b ? b.btc : c ? c.ada : z ? z.zec : at ? at.atom : st ? st.xlm : lt ? lt.ltc : dt ? dt.dot : g!.algo;
+            const vt = w.chain === 'vet' ? (v as VetAccount) : null;
+            const amount = x ? x.xrp : e ? e.eth : b ? b.btc : c ? c.ada : z ? z.zec : at ? at.atom : st ? st.xlm : lt ? lt.ltc : dt ? dt.dot : vt ? vt.vet : g!.algo;
             // Token-Wert in €: Stablecoins = 1 USD, andere (z. B. QNT) zum eigenen Kurs
             const tokenEur = e && nw.eurAed ? e.tokens.reduce((n, t) => n + (!Number.isFinite(t.amount) ? 0 : t.price === 'usd' ? (t.amount * AED_PER_USD) / nw.eurAed! : t.amount * (prices[t.price]?.eur ?? 0)), 0) : 0;
             return (
@@ -219,6 +220,7 @@ export default async function FinancePage() {
                     )}
                   </>
                 )}
+                {vt && !vt.error && <p className="text-xs text-muted">VeChain-Netz.{vt.vtho > 0 ? ` Dazu ${nf(vt.vtho, 2)} VTHO (Gebühren-Token, entsteht automatisch, nicht mitgezählt).` : ''}</p>}
                 {dt && !dt.error && (
                   <p className="text-xs text-muted">
                     Polkadot Asset Hub + Relay-Chain zusammen.{dt.frozen > 0 ? ` Davon ${nf(dt.frozen, 2)} DOT gebunden (Staking/Sperre).` : ' Nicht gestaked.'}{dt.reserved > 0 ? ` ${nf(dt.reserved, 2)} DOT reserviert.` : ''}
@@ -308,7 +310,7 @@ export default async function FinancePage() {
         </ul>
 
         <div className="mt-3">
-          <ConnectSection initialOpen={wallets.length === 0} title="+ Wallet-Adresse hinzufügen (BTC / ETH / XRP / ADA / ALGO / ZEC / ATOM / XLM / LTC / DOT)">
+          <ConnectSection initialOpen={wallets.length === 0} title="+ Wallet-Adresse hinzufügen (BTC / ETH / XRP / ADA / ALGO / ZEC / ATOM / XLM / LTC / DOT / VET)">
             <div className="mt-3"><AddWalletForm /></div>
           </ConnectSection>
         </div>

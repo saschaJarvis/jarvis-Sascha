@@ -2,7 +2,7 @@ import 'server-only';
 import { db } from './repo';
 import type { Session } from './auth';
 import { getFx } from './ext';
-import { coinPrices, loadAdaAccount, loadAlgoAccount, loadBtcAccount, loadEthAccount, loadXrpAccount, loadZecAccount, loadAtomAccount, loadXlmAccount, loadLtcAccount, loadDotAccount, WALLETS_SQL, type Coin, type PriceCoin } from './wallets';
+import { coinPrices, loadAdaAccount, loadAlgoAccount, loadBtcAccount, loadEthAccount, loadXrpAccount, loadZecAccount, loadAtomAccount, loadXlmAccount, loadLtcAccount, loadDotAccount, loadVetAccount, WALLETS_SQL, type Coin, type PriceCoin } from './wallets';
 import { goldValueUsd, sumParts, toAed, AED_PER_USD } from '@/lib/domain/networth';
 import { portfolioChange } from '@/lib/domain/change';
 
@@ -70,6 +70,7 @@ export async function loadNetWorth(s: Session): Promise<NetWorth> {
       const a = await loadAlgoAccount(w.address);
       return { error: !!a.error, assets: [{ symbol: 'ALGO', amount: a.algo, price: 'algo' as const }, ...a.tokens.map((t) => ({ ...t, price: 'usd' as const }))] };
     }
+    if (w.chain === 'vet') { const a = await loadVetAccount(w.address); return { error: !!a.error, assets: [{ symbol: 'VET', amount: a.vet, price: 'vet' as const }] }; }
     if (w.chain === 'dot') { const a = await loadDotAccount(w.address); return { error: !!a.error, assets: [{ symbol: 'DOT', amount: a.dot, price: 'dot' as const }] }; }
     if (w.chain === 'ltc') { const a = await loadLtcAccount(w.address); return { error: !!a.error, assets: [{ symbol: 'LTC', amount: a.ltc, price: 'ltc' as const }] }; }
     if (w.chain === 'xlm') { const a = await loadXlmAccount(w.address); return { error: !!a.error, assets: [{ symbol: 'XLM', amount: a.xlm, price: 'xlm' as const }, ...a.tokens.map((t) => ({ ...t, price: 'usd' as const }))] }; }

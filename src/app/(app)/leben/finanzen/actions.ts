@@ -16,6 +16,7 @@ import { isLtcAddress, ltcAddressHint } from '@/lib/crypto/ltc';
 import { dotAddressHint, isDotAddress } from '@/lib/crypto/dot';
 import { descriptorOf, parseAccountKey } from '@/lib/crypto/xpub';
 import { blockbookLoad, detectScheme } from '@/server/blockbook';
+import { loadEthAccount, loadVetAccount } from '@/server/wallets';
 import { CURRENCIES, parseAmount } from '@/lib/domain/networth';
 
 export type WalletState = { error?: string; ok?: string } | undefined;
@@ -57,7 +58,7 @@ export async function addWalletAction(_: WalletState, fd: FormData): Promise<Wal
   if (raw.startsWith('{')) return { error: 'Dieser Export wird nicht erkannt. Bitte die öffentliche Adresse oder den Litecoin-Export aus Ledger Live einfügen.' };
   const SECRET = '⚠️ Das sieht nach einer geheimen Wiederherstellungsphrase oder einem privaten Schlüssel aus. Es wurde NICHT gespeichert. Jarvis braucht nur die öffentliche Adresse. Gib deine 24 Wörter oder Schlüssel niemals irgendwo ein.';
   if (raw.split(/\s+/).length >= 12 || /^s[1-9A-HJ-NP-Za-km-z]{25,}$/.test(raw) || /^(0x)?[0-9a-fA-F]{64}$/.test(raw) || /^([xyzt]prv|Ltpv|Mtpv)/i.test(raw) || /^[5KL][1-9A-HJ-NP-Za-km-z]{50,51}$/.test(raw) || /^S[A-Z2-7]{55}$/.test(raw)) return { error: SECRET };
-  let chain: 'xrp' | 'eth' | 'btc' | 'ada' | 'algo' | 'zec' | 'atom' | 'xlm' | 'ltc' | 'dot';
+  let chain: 'xrp' | 'eth' | 'btc' | 'ada' | 'algo' | 'zec' | 'atom' | 'xlm' | 'ltc' | 'dot' | 'vet';
   if (/^1[1-9A-HJ-NP-Za-km-z]{44,49}$/.test(raw)) {
     if (!isDotAddress(raw)) return { error: dotAddressHint(raw) ?? 'Keine gültige Polkadot-Adresse (beginnt mit 1, 47–48 Zeichen).' };
     chain = 'dot';
@@ -84,7 +85,14 @@ export async function addWalletAction(_: WalletState, fd: FormData): Promise<Wal
     chain = 'btc';
   } else if (raw.startsWith('0x') || /\.eth$/i.test(raw)) {
     if (!isEthAddress(raw)) return { error: ethAddressHint(raw) ?? 'Keine gültige Ethereum-Adresse (0x + 40 Zeichen).' };
-    chain = 'eth';
+    // 0x-Adressen gibt es auch bei VeChain: „vet“/„vechain“ in der Bezeichnung entscheidet; sonst nachsehen,
+    // ob auf Ethereum etwas liegt und auf VeChain schon – dann ist es eine VeChain-Adresse.
+    if (/^(vet|vechain)/i.test(label)) chain = 'vet';
+    else if (raw.startsWith('0x')) {
+      const [eth, vet] = await Promise.all([loadEthAccount(raw), loadVetAccount(raw)]);
+      const ethEmpty = !eth.error && eth.eth === 0 && eth.tokens.every((t) => !t.amount);
+      chain = ethEmpty && !vet.error && (vet.vet > 0 || vet.vtho > 0) ? 'vet' : 'eth';
+    } else chain = 'eth';
   } else {
     if (!isXrpAddress(raw)) return { error: addressHint(raw) ?? 'Keine gültige Adresse. Bitcoin beginnt mit 1, 3 oder bc1, Ethereum mit 0x, XRP mit r, Cardano mit addr1, Zcash mit t1, Cosmos mit cosmos1, Stellar mit G (56 Zeichen), Litecoin mit L, M oder ltc1, Polkadot mit 1 (47–48 Zeichen), Algorand hat 58 Großbuchstaben/Ziffern.' };
     chain = 'xrp';
@@ -105,6 +113,8 @@ export async function addWalletAction(_: WalletState, fd: FormData): Promise<Wal
       ? q('insert into atom_wallets (user_id, address, label) values (auth.uid(), $1, $2)', [raw, label])
       : chain === 'xlm'
       ? q('insert into xlm_wallets (user_id, address, label) values (auth.uid(), $1, $2)', [raw, label])
+      : chain === 'vet'
+      ? q('insert into vet_wallets (user_id, address, label) values (auth.uid(), $1, $2)', [raw, label])
       : chain === 'dot'
       ? q('insert into dot_wallets (user_id, address, label) values (auth.uid(), $1, $2)', [raw, label])
       : chain === 'ltc'
@@ -112,7 +122,7 @@ export async function addWalletAction(_: WalletState, fd: FormData): Promise<Wal
       : q('insert into crypto_wallets (user_id, chain, address, label) values (auth.uid(), $1, $2, $3)', [chain, raw, label]));
   } catch (e) {
     const m = e instanceof Error ? e.message : '';
-    if (/(crypto|eth|btc|ada|algo|zec|atom|xlm|ltc|dot)_wallets_unique/.test(m)) return { error: 'Diese Adresse ist schon eingetragen.' };
+    if (/(crypto|eth|btc|ada|algo|zec|atom|xlm|ltc|dot|vet)_wallets_unique/.test(m)) return { error: 'Diese Adresse ist schon eingetragen.' };
     if (/Höchstens 20/.test(m)) return { error: 'Höchstens 20 Wallets – bitte erst eines entfernen.' };
     return { error: friendlyDbError(e) };
   }
@@ -134,6 +144,7 @@ export async function removeWalletAction(fd: FormData): Promise<void> {
     await q('update xlm_wallets set deleted_at = now() where id = $1 and deleted_at is null', [id]);
     await q('update ltc_wallets set deleted_at = now() where id = $1 and deleted_at is null', [id]);
     await q('update dot_wallets set deleted_at = now() where id = $1 and deleted_at is null', [id]);
+    await q('update vet_wallets set deleted_at = now() where id = $1 and deleted_at is null', [id]);
   });
   revalidatePath('/', 'layout');
 }
