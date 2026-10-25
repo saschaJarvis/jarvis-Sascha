@@ -37,6 +37,8 @@ export function NetWorthBlock({ nw, compact = false }: { nw: NetWorth; compact?:
         ))}
       </dl>
 
+      {nw.crypto.change && <CryptoChange ch={nw.crypto.change} asOf={nw.crypto.asOf} />}
+
       {nw.missing > 0 && <p className="text-xs text-warn">▲ {nw.missing} Posten ohne aktuellen Kurs – nicht mitgezählt.</p>}
       {empty && <p className="text-sm text-muted">Noch nichts erfasst. Konten, Krypto und Gold trägst du unter Finanzen ein.</p>}
     </div>
@@ -48,6 +50,26 @@ export function NetWorthCard({ nw }: { nw: NetWorth }) {
     <div className="card mb-5">
       <NetWorthBlock nw={nw} />
       <p className="mt-3 text-xs text-muted">In AED gerechnet (USD fest 3,6725; EUR nach EZB-Kurs). Wohnung und Hypothek sind nicht enthalten. <Link href="/leben/dubai" className="underline">Wohnung</Link></p>
+    </div>
+  );
+}
+
+const sign = (n: number) => (n > 0 ? '+' : n < 0 ? '−' : '±');
+
+/** „Krypto 24 h: ▲ +2,3 % · +450 € · +1.800 AED“ */
+export function CryptoChange({ ch, asOf, label = 'Krypto 24 h' }: { ch: NonNullable<NetWorth['crypto']['change']>; asOf?: Date; label?: string }) {
+  const up = ch.aed > 0, down = ch.aed < 0;
+  const tone = up ? 'text-good' : down ? 'text-bad' : 'text-muted';
+  return (
+    <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 border-l-2 pl-2 text-sm" style={{ borderColor: 'currentColor' }}>
+      <span className="mono text-[.62rem] uppercase tracking-[.16em] text-muted">{label}</span>
+      <span className={`hud-num font-semibold ${tone}`}>
+        {up ? '▲' : down ? '▼' : '■'} {ch.pct != null ? `${sign(ch.pct)}${nf(Math.abs(ch.pct) * 100, 2)} %` : '–'}
+        {ch.eur != null && ` · ${sign(ch.eur)}${nf(Math.abs(ch.eur))} €`}
+        {` · ${sign(ch.aed)}${nf(Math.abs(ch.aed))} AED`}
+      </span>
+      {asOf && <span className="mono text-[.6rem] text-muted" suppressHydrationWarning>Stand {asOf.toLocaleTimeString('de-DE', { timeZone: 'Asia/Dubai', hour: '2-digit', minute: '2-digit', second: '2-digit' })}</span>}
+      {!ch.complete && <span className="text-xs text-warn">teilweise ohne 24-h-Wert</span>}
     </div>
   );
 }

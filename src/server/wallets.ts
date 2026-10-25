@@ -3,6 +3,7 @@ import { DROPS_PER_XRP, toMove, type XrpMove } from '@/lib/crypto/xrp';
 import { balanceOfData, ETH_TOKENS, fromUnits } from '@/lib/crypto/eth';
 import { SATS_PER_BTC } from '@/lib/crypto/btc';
 import { LOVELACE_PER_ADA, stakeAddressOf } from '@/lib/crypto/ada';
+import { priceAgo, relChange } from '@/lib/domain/change';
 import { AED_PER_USD } from './ext';
 
 /**
@@ -22,7 +23,7 @@ export interface XrpAccount {
   moves: XrpMove[];
   error?: string;
 }
-export interface Price { eur: number; usd: number; aed: number; source: string; at: Date }
+export interface Price { eur: number; usd: number; aed: number; source: string; at: Date; change24h: number | null } // change24h: relativ, z. B. 0,023
 
 const cache = new Map<string, { at: number; v: unknown }>();
 async function cached<T>(key: string, ttlMs: number, fn: () => Promise<T>): Promise<T> {
@@ -100,28 +101,59 @@ export const WALLETS_SQL = `select id, chain, address, label, created_at from (
   union all select id, 'btc'::text, address, label, created_at from btc_wallets where deleted_at is null
   union all select id, 'ada'::text, address, label, created_at from ada_wallets where deleted_at is null) w order by created_at`;
 const GECKO: Record<Coin, string> = { xrp: 'ripple', eth: 'ethereum', btc: 'bitcoin', ada: 'cardano' };
-const KRAKEN: Record<Coin, string> = { xrp: 'XRP', eth: 'ETH', btc: 'XBT', ada: 'ADA' };
 
-/** Kurse: CoinGecko (eine Abfrage für alle), Ausweich Kraken. AED über die feste USD-Bindung. */
+const KRAKEN_PAIR: Record<Coin, string> = { btc: 'XBT', eth: 'ETH', xrp: 'XRP', ada: 'ADA' };
+const PRICE_TTL = 20; // Sekunden – „quasi Echtzeit“; Kraken erlaubt ~1 Abfrage/s je IP
+
+/**
+ * Kurse fast in Echtzeit von Kraken (regulierte Börse, öffentlicher Kurs-Feed, ohne Schlüssel):
+ * letzter Handelspreis in EUR und USD, dazu die 24-h-Veränderung aus Stundenkerzen.
+ * Ausweich: CoinGecko (Durchschnitt mehrerer Börsen, inkl. 24-h-Änderung). AED über die USD-Bindung.
+ */
 export async function coinPrices(coins: readonly Coin[] = ['xrp', 'eth', 'btc', 'ada']): Promise<Partial<Record<Coin, Price>>> {
-  if (fake()) return { xrp: { eur: 2, usd: 2.2, aed: 2.2 * AED_PER_USD, source: 'Test', at: new Date() }, eth: { eur: 3000, usd: 3300, aed: 3300 * AED_PER_USD, source: 'Test', at: new Date() }, btc: { eur: 90000, usd: 100000, aed: 100000 * AED_PER_USD, source: 'Test', at: new Date() }, ada: { eur: 0.6, usd: 0.7, aed: 0.7 * AED_PER_USD, source: 'Test', at: new Date() } };
+  if (fake()) {
+    const t = (eur: number, usd: number, change24h: number) => ({ eur, usd, aed: usd * AED_PER_USD, source: 'Test', at: new Date(), change24h });
+    return { xrp: t(2, 2.2, 0.1), eth: t(3000, 3300, -0.02), btc: t(90000, 100000, 0.01), ada: t(0.6, 0.7, 0) };
+  }
   const out: Partial<Record<Coin, Price>> = {};
   if (!coins.length) return out;
   try {
-    const r = await fetch(`https://api.coingecko.com/api/v3/simple/price?ids=${coins.map((c) => GECKO[c]).join(',')}&vs_currencies=eur,usd`, { next: { revalidate: 300 }, signal: AbortSignal.timeout(4000) });
-    if (r.ok) {
-      const j = (await r.json()) as Record<string, { eur?: number; usd?: number }>;
-      for (const c of coins) { const v = j[GECKO[c]]; if (v?.eur && v.usd) out[c] = { eur: v.eur, usd: v.usd, aed: v.usd * AED_PER_USD, source: 'CoinGecko', at: new Date() }; }
-    }
-  } catch { /* Ausweich */ }
-  for (const c of coins.filter((x) => !out[x])) {
+    const pairs = coins.flatMap((c) => [`${KRAKEN_PAIR[c]}EUR`, `${KRAKEN_PAIR[c]}USD`]).join(',');
+    const r = await fetch(`https://api.kraken.com/0/public/Ticker?pair=${pairs}`, { next: { revalidate: PRICE_TTL }, signal: AbortSignal.timeout(4000) });
+    const j = (await r.json()) as { error?: string[]; result?: Record<string, { c?: [string]; altname?: string }> };
+    const entries = Object.entries(j.result ?? {});
+    // Kraken liefert Schlüssel wie XXBTZEUR/XETHZEUR/ADAEUR – über Basis-Kürzel und Quote zuordnen
+    const find = (c: Coin, q: 'EUR' | 'USD') => {
+      const base = KRAKEN_PAIR[c];
+      const e = entries.find(([k]) => k.endsWith(q) && (k.startsWith(base) || k.startsWith(`X${base}`)));
+      const v = Number(e?.[1].c?.[0]);
+      return Number.isFinite(v) && v > 0 ? { key: e![0], v } : null;
+    };
+    await Promise.all(coins.map(async (c) => {
+      const eur = find(c, 'EUR'), usd = find(c, 'USD');
+      if (!eur || !usd) return;
+      let change24h: number | null = null;
+      try {
+        const o = await fetch(`https://api.kraken.com/0/public/OHLC?pair=${eur.key}&interval=60`, { next: { revalidate: 300 }, signal: AbortSignal.timeout(4000) });
+        const oj = (await o.json()) as { result?: Record<string, unknown> };
+        const candles = Object.entries(oj.result ?? {}).find(([k]) => k !== 'last')?.[1] as Array<[number, string, string, string, string]> | undefined;
+        if (candles) change24h = relChange(eur.v, priceAgo(candles, Math.floor(Date.now() / 1000)));
+      } catch { /* ohne 24-h-Änderung */ }
+      out[c] = { eur: eur.v, usd: usd.v, aed: usd.v * AED_PER_USD, source: 'Kraken', at: new Date(), change24h };
+    }));
+  } catch (e) { console.error('[kurs] kraken', (e as Error).message); }
+
+  const missing = coins.filter((x) => !out[x]);
+  if (missing.length) {
     try {
-      const k = KRAKEN[c];
-      const r = await fetch(`https://api.kraken.com/0/public/Ticker?pair=${k}EUR,${k}USD`, { next: { revalidate: 300 }, signal: AbortSignal.timeout(4000) });
-      const j = (await r.json()) as { result?: Record<string, { c?: [string] }> };
-      const pick = (re: RegExp) => Number(Object.entries(j.result ?? {}).find(([key]) => re.test(key))?.[1].c?.[0]);
-      const eur = pick(/EUR$/), usd = pick(/USD$/);
-      if (eur > 0 && usd > 0) out[c] = { eur, usd, aed: usd * AED_PER_USD, source: 'Kraken', at: new Date() };
+      const r = await fetch(`https://api.coingecko.com/api/v3/simple/price?ids=${missing.map((c) => GECKO[c]).join(',')}&vs_currencies=eur,usd&include_24hr_change=true`, { next: { revalidate: 60 }, signal: AbortSignal.timeout(4000) });
+      if (r.ok) {
+        const j = (await r.json()) as Record<string, { eur?: number; usd?: number; eur_24h_change?: number }>;
+        for (const c of missing) {
+          const v = j[GECKO[c]];
+          if (v?.eur && v.usd) out[c] = { eur: v.eur, usd: v.usd, aed: v.usd * AED_PER_USD, source: 'CoinGecko', at: new Date(), change24h: typeof v.eur_24h_change === 'number' ? v.eur_24h_change / 100 : null };
+        }
+      }
     } catch { /* kein Kurs */ }
   }
   return out;

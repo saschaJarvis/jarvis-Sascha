@@ -68,4 +68,12 @@ test('Krypto nur ansehen: Seed wird abgewiesen, Tippfehler erkannt, Adresse zeig
   await page.reload();
   await expect(page.getByText('1.000,00 ADA', { exact: true })).toBeVisible();
   await expect(page.getByText(/Ganzes Cardano-Konto .* 12,50 ADA Staking-Belohnungen/)).toBeVisible();
+
+  // 24-h-Veränderung (Testkurse: XRP +10 %, ETH −2 %, BTC +1 %, ADA ±0)
+  const row = (c: string) => page.locator('tr', { has: page.getByRole('cell', { name: c, exact: true }) });
+  await expect(row('XRP')).toContainText('+10,00 %');
+  await expect(row('ETH')).toContainText('−2,00 %');
+  await expect(row('ADA')).toContainText('±0,00 %');
+  // € erscheint nur mit EZB-Kurs (offline in Tests nicht verfügbar) – AED immer
+  await expect(page.getByText(/^▲ \+\d+,\d{2} %( · \+[\d.]+ €)? · \+[\d.]+ AED$/).first()).toBeVisible();
 });

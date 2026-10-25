@@ -4,6 +4,7 @@ import type { Session } from './auth';
 import { getFx } from './ext';
 import { coinPrices, loadAdaAccount, loadBtcAccount, loadEthAccount, loadXrpAccount, WALLETS_SQL, type Coin } from './wallets';
 import { goldValueUsd, sumParts, toAed, AED_PER_USD } from '@/lib/domain/networth';
+import { portfolioChange } from '@/lib/domain/change';
 
 const fake = () => process.env.CRYPTO_FAKE === '1' && process.env.AUTH_PROVIDER !== 'supabase';
 
@@ -37,7 +38,12 @@ export interface NetWorth {
   totalEur: number | null;
   missing: number;                       // Posten ohne Kurs (nicht mitgezählt)
   accounts: { aed: number; count: number; rows: Array<AccountRow & { aed: number | null }> };
-  crypto: { aed: number; count: number; holdings: Partial<Record<string, number>>; error: boolean };
+  crypto: {
+    aed: number; count: number; holdings: Partial<Record<string, number>>; error: boolean;
+    change: { aed: number; eur: number | null; pct: number | null; complete: boolean } | null;
+    coins: Array<{ coin: Coin; amount: number; aed: number; eur: number; priceEur: number; priceAed: number; changePct: number | null; changeAed: number | null; source: string }>;
+    asOf: Date;
+  };
   gold: { aed: number; count: number; grams: number; price: GoldPrice | null; rows: Array<GoldRow & { aed: number | null }> };
 }
 
@@ -87,6 +93,21 @@ export async function loadNetWorth(s: Session): Promise<NetWorth> {
     return v.native.amount * p.aed + v.stable * AED_PER_USD;
   });
   const crypto = sumParts(cryptoVals);
+  // 24-h-Veränderung: Kurswert je Coin mit seiner Änderung; Stablecoins ohne Änderung
+  const perCoin: Partial<Record<Coin, { amount: number; aed: number; eur: number }>> = {};
+  const changeItems = views.flatMap((v) => {
+    const p = prices[v.native.coin];
+    if (v.error || !p) return [];
+    const pc = (perCoin[v.native.coin] ??= { amount: 0, aed: 0, eur: 0 });
+    pc.amount += v.native.amount; pc.aed += v.native.amount * p.aed; pc.eur += v.native.amount * p.eur;
+    return [{ valueNow: v.native.amount * p.aed, change: p.change24h }, ...(v.stable ? [{ valueNow: v.stable * AED_PER_USD, change: 0 }] : [])];
+  });
+  const ch = portfolioChange(changeItems);
+  const coins = (Object.entries(perCoin) as Array<[Coin, { amount: number; aed: number; eur: number }]>).map(([coin, v]) => {
+    const p = prices[coin]!;
+    const c = portfolioChange([{ valueNow: v.aed, change: p.change24h }]);
+    return { coin, amount: v.amount, aed: v.aed, eur: v.eur, priceEur: p.eur, priceAed: p.aed, changePct: p.change24h, changeAed: p.change24h == null ? null : c.abs, source: p.source };
+  });
   const gp = rows.gold.length ? await goldPrice() : null;
   const goldRows = rows.gold.map((g) => ({ ...g, aed: gp ? goldValueUsd(Number(g.grams), g.purity, gp.usdPerOz) * AED_PER_USD : null }));
   const gold = sumParts(goldRows.map((g) => g.aed));
@@ -96,7 +117,10 @@ export async function loadNetWorth(s: Session): Promise<NetWorth> {
   return {
     eurAed, totalAed: total.aed, totalEur: eurAed ? total.aed / eurAed : null, missing,
     accounts: { aed: acc.aed, count: accRows.length, rows: accRows },
-    crypto: { aed: crypto.aed, count: rows.wallets.length, holdings, error: crypto.missing > 0 },
+    crypto: {
+      aed: crypto.aed, count: rows.wallets.length, holdings, error: crypto.missing > 0, coins, asOf: new Date(),
+      change: changeItems.length ? { aed: ch.abs, eur: eurAed ? ch.abs / eurAed : null, pct: ch.pct, complete: ch.complete } : null,
+    },
     gold: { aed: gold.aed, count: rows.gold.length, grams: rows.gold.reduce((n, g) => n + Number(g.grams), 0), price: gp, rows: goldRows },
   };
 }

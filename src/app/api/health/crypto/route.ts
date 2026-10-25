@@ -14,7 +14,7 @@ export async function GET() {
     eth: eth.error ? { ok: false, fehler: eth.error } : { ok: true, tokens: eth.tokens.filter((t) => Number.isFinite(t.amount)).length },
     btc: btc.error ? { ok: false, fehler: btc.error } : { ok: true, bewegungen: btc.moves.length },
     ada: ada.error ? { ok: false, fehler: ada.error } : { ok: true, ganzesKonto: ada.whole },
-    kurs: { xrp: prices.xrp?.source ?? false, eth: prices.eth?.source ?? false, btc: prices.btc?.source ?? false, ada: prices.ada?.source ?? false },
+    kurs: Object.fromEntries((['xrp', 'eth', 'btc', 'ada'] as const).map((c) => [c, prices[c] ? { quelle: prices[c]!.source, h24: prices[c]!.change24h != null } : false])),
     gold: gold ? { ok: true, quelle: gold.source } : { ok: false },
   }, { headers: { 'Cache-Control': 'no-store' } });
 }

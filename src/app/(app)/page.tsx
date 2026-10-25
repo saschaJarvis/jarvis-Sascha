@@ -21,6 +21,7 @@ import { loadExternalEvents } from '@/server/calendars';
 import { ensureBillTasks } from '@/server/bills';
 import { loadNetWorth } from '@/server/networth';
 import { NetWorthBlock } from '@/components/net-worth';
+import { AutoRefresh } from '@/components/auto-refresh';
 import { DOMAIN_LABEL as DOMAIN } from '@/lib/labels';
 import { claudeAvailable, AI_CONSENT } from '@/server/claude';
 
@@ -279,6 +280,7 @@ export default async function BridgePage() {
         <div className="order-3 grid min-w-0 grid-cols-1 content-start gap-4">
           <Panel n="04" title="Finanzen" href="/leben/finanzen" aside={fx ? `1 € = ${fx.eurAed.toLocaleString('de-DE', { minimumFractionDigits: 3, maximumFractionDigits: 3 })} AED` : 'Kurs fehlt'}>
             <NetWorthBlock nw={nw} compact />
+            <AutoRefresh seconds={60} />
           </Panel>
 
           <Panel n="05" title="Dubai" href="/leben/dubai" aside={daysToMove !== null ? `T – ${daysToMove}` : 'Umzugsdatum offen'}>

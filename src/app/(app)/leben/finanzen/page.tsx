@@ -8,7 +8,8 @@ import { AddAccountForm, AddGoldForm, AddWalletForm, BalanceForm } from './walle
 import { ConnectSection } from '../../kalender/connect-form';
 import { removeAccountAction, removeGoldAction, removeWalletAction } from './actions';
 import { loadNetWorth } from '@/server/networth';
-import { NetWorthCard } from '@/components/net-worth';
+import { CryptoChange, NetWorthCard } from '@/components/net-worth';
+import { AutoRefresh } from '@/components/auto-refresh';
 
 const KIND: Record<string, string> = { checking: 'Girokonto', savings: 'Sparkonto', deposit: 'Festgeld', credit_card: 'Kreditkarte', crypto_exchange: 'Krypto-Börse', other: 'Sonstiges', loan: 'Kredit' };
 const FORM: Record<string, string> = { bar: 'Barren', coin: 'Münze', jewelry: 'Schmuck', other: 'Sonstiges' };
@@ -34,6 +35,7 @@ export default async function FinancePage() {
   return (
     <div>
       <PageTitle back={{ href: '/leben', label: 'Leben' }} title="Finanzen" />
+      <AutoRefresh seconds={30} />
 
       <NetWorthCard nw={nw} />
 
@@ -103,6 +105,33 @@ export default async function FinancePage() {
             <p className="text-2xl font-bold">{nf(nw.crypto.aed, 0)} AED</p>
             <p className="text-muted">{nw.eurAed ? `≈ ${nf(nw.crypto.aed / nw.eurAed, 0)} € · ` : ''}{Object.entries(nw.crypto.holdings).filter(([, v]) => v != null).sort(([a], [b]) => ['BTC', 'ETH', 'XRP', 'ADA', 'USDT', 'USDC'].indexOf(a) - ['BTC', 'ETH', 'XRP', 'ADA', 'USDT', 'USDC'].indexOf(b)).map(([k, v]) => `${nf(v ?? 0, k === 'BTC' ? 8 : k === 'ETH' ? 4 : 2)} ${k}`).join(' · ')}</p>
             {nw.crypto.error && <p className="text-sm text-warn">Ein Teil ist gerade ohne Kurs oder Netz – nicht mitgezählt.</p>}
+            {nw.crypto.change && <div className="mt-1"><CryptoChange ch={nw.crypto.change} asOf={nw.crypto.asOf} label="24 h" /></div>}
+            {nw.crypto.coins.length > 0 && (
+              <div className="mt-2 overflow-x-auto">
+                <table className="w-full min-w-[19rem] text-sm">
+                  <thead><tr className="mono text-left text-[.6rem] uppercase tracking-[.14em] text-muted">
+                    <th className="py-1 font-normal">Coin</th><th className="py-1 text-right font-normal">Kurs</th><th className="py-1 text-right font-normal">24 h</th><th className="py-1 text-right font-normal">Wert</th>
+                  </tr></thead>
+                  <tbody>
+                    {[...nw.crypto.coins].sort((a, b) => b.aed - a.aed).map((c) => {
+                      const tone = c.changePct == null ? 'text-muted' : c.changePct > 0 ? 'text-good' : c.changePct < 0 ? 'text-bad' : 'text-muted';
+                      return (
+                        <tr key={c.coin} className="border-t border-line">
+                          <td className="py-1.5 font-semibold">{c.coin.toUpperCase()}</td>
+                          <td className="hud-num py-1.5 text-right">{nf(c.priceEur, c.priceEur < 10 ? 4 : 2)} €<span className="block text-xs text-muted">{nf(c.priceAed, c.priceAed < 10 ? 4 : 2)} AED</span></td>
+                          <td className={`hud-num py-1.5 text-right ${tone}`}>
+                            {c.changePct == null ? '–' : `${c.changePct > 0 ? '+' : c.changePct < 0 ? '−' : '±'}${nf(Math.abs(c.changePct) * 100, 2)} %`}
+                            {c.changeAed != null && nw.eurAed && <span className="block text-xs">{c.changeAed >= 0 ? '+' : '−'}{nf(Math.abs(c.changeAed / nw.eurAed), 0)} € · {c.changeAed >= 0 ? '+' : '−'}{nf(Math.abs(c.changeAed), 0)} AED</span>}
+                          </td>
+                          <td className="hud-num py-1.5 text-right">{nf(c.eur, 0)} €<span className="block text-xs text-muted">{nf(c.aed, 0)} AED</span></td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+                <p className="mt-1 text-xs text-muted">Kurse: {[...new Set(nw.crypto.coins.map((c) => c.source))].join(', ')} · letzter Handelspreis, 24 h = Vergleich mit dem Kurs vor 24 Stunden. Aktualisiert sich alle 30 Sekunden.</p>
+              </div>
+            )}
           </div>
         )}
 
