@@ -13,3 +13,8 @@ export const CLOSURE_LABEL: Record<string, string> = {
   keys_returned: 'Alle Schlüssel zurückgegeben', final_invoice: 'Schlussrechnung geprüft/bezahlt', deposit: 'Kaution zurückerhalten',
   no_further_debits: 'Keine weiteren Abbuchungen',
 };
+
+export const DOMAIN_LABEL: Record<string, string> = {
+  relocation: 'Umzug', finance: 'Geld', contracts: 'Verträge', documents: 'Dokumente', property: 'Dubai-Wohnung',
+  business: 'Firma', general: 'Allgemein', taxes: 'Steuern',
+};

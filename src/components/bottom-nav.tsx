@@ -13,6 +13,7 @@ const items = [
 const deskLinks = [
   { href: '/', label: 'Brücke' },
   { href: '/aufgaben', label: 'Aufgaben' },
+  { href: '/kalender', label: 'Kalender' },
   { href: '/eingang', label: 'Eingang' },
   { href: '/leben/dokumente', label: 'Dokumente' },
   { href: '/leben/vertraege', label: 'Verträge' },

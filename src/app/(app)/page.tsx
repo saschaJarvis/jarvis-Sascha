@@ -12,12 +12,11 @@ import { TransitionButton } from '@/components/task-actions';
 import { SnoozeMenu } from '@/components/snooze';
 import { QuickCapture } from '@/components/quick-capture';
 import { SortUpload } from '@/components/sort-upload';
+import { WeekCalendar } from '@/components/week-calendar';
+import { buildCalendar } from '@/lib/calendar';
+import { DOMAIN_LABEL as DOMAIN } from '@/lib/labels';
 import { claudeAvailable, AI_CONSENT } from '@/server/claude';
 
-const DOMAIN: Record<string, string> = {
-  relocation: 'Umzug', finance: 'Geld', contracts: 'Verträge', documents: 'Dokumente', property: 'Dubai-Wohnung',
-  business: 'Firma', general: 'Allgemein', taxes: 'Steuern',
-};
 const DUBAI_DOCS = 6; // SPA, Oqood, Zahlungsplan, Bankangebot, Service Charge, Übergabe
 
 interface Stats {
@@ -94,15 +93,7 @@ export default async function BridgePage() {
     main ? `Mein Vorschlag für jetzt: „${main.title}“.` : 'Gerade drängt nichts – guter Moment, Dinge aus dem Kopf zu notieren.',
   ].join(' ');
 
-  const week = Array.from({ length: 7 }, (_, i) => {
-    const d = new Date(now.getTime() + i * 86_400_000);
-    const list = open.filter((t) => due(t) && dayNo(due(t)!, tz) === today + i);
-    return {
-      key: i, list,
-      wd: i === 0 ? 'Heute' : i === 1 ? 'Morgen' : new Intl.DateTimeFormat('de-DE', { timeZone: tz, weekday: 'long' }).format(d),
-      date: new Intl.DateTimeFormat('de-DE', { timeZone: tz, day: '2-digit', month: '2-digit' }).format(d),
-    };
-  });
+  const weeks = buildCalendar(open, tz, now);
   const hours = Array.from({ length: 16 }, (_, i) => i + 7); // 07–22 Uhr
 
   const domainCounts = Object.entries(open.reduce<Record<string, number>>((m, t) => ((m[t.domain] = (m[t.domain] ?? 0) + 1), m), {}))
@@ -193,18 +184,7 @@ export default async function BridgePage() {
             <p className="mx-auto max-w-2xl text-[1.05rem] leading-relaxed">{briefing}</p>
           </section>
 
-          <section aria-label="Woche" className="grid grid-cols-7 gap-1">
-            {week.map((d) => (
-              <div key={d.key} className={`min-h-20 min-w-0 border p-1 sm:min-h-24 sm:p-1.5 ${d.key === 0 ? 'border-sea/70 bg-sea-soft/40' : 'border-line bg-card/60'}`}>
-                <p className="mono flex flex-col text-[.58rem] uppercase tracking-wider sm:flex-row sm:justify-between"><span className={d.key === 0 ? 'text-sea' : 'text-muted'}>{d.wd.slice(0, 2)}</span><span className="text-muted">{d.date.slice(0, 5)}</span></p>
-                <ul className="mt-1 grid gap-0.5">
-                  {d.list.slice(0, 2).map((t) => <li key={t.id} className="truncate text-[.68rem] leading-tight"><Link href={`/aufgaben/${t.id}`}>• {t.title}</Link></li>)}
-                  {d.list.length > 2 && <li className="mono text-[.6rem] text-muted">+{d.list.length - 2}</li>}
-                  {d.list.length === 0 && <li className="mono text-[.6rem] text-muted/60">frei</li>}
-                </ul>
-              </div>
-            ))}
-          </section>
+<WeekCalendar weeks={weeks} domainLabel={DOMAIN} />
 
           <nav aria-label="Schnellaktionen" className="flex flex-wrap justify-center gap-2">
             <Link href="/aufgaben/neu" className="btn btn-secondary min-h-10 text-[.7rem]">+ Neue Aufgabe</Link>

@@ -101,3 +101,13 @@ test('Kündigungsentwurf: Regeln aus der Recherche (R4, R5, R6, R10)', () => {
   assert.equal(lager.checks.find((c) => c.id === 'contract_type')?.state, 'open');
   assert.ok(lager.checks.some((c) => c.id === 'lien'));
 });
+
+test('Schnellerfassung: „übermorgen“ (Umlaut am Wortanfang) wird erkannt und nicht als „morgen“ gelesen', async () => {
+  const { parseQuickCapture } = await import('../../src/lib/domain/quickCapture');
+  const now = new Date('2026-10-25T08:00:00Z');
+  const a = parseQuickCapture('Übermorgen Bank anrufen', now, 'Asia/Dubai');
+  assert.equal(a.title, 'Bank anrufen');
+  assert.equal(a.dueAt?.toISOString(), '2026-10-27T05:00:00.000Z'); // 09:00 Dubai
+  const b = parseQuickCapture('übermorgen um 11 Uhr Bank anrufen', now, 'Asia/Dubai');
+  assert.equal(b.dueAt?.toISOString(), '2026-10-27T07:00:00.000Z');
+});

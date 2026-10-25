@@ -6,6 +6,7 @@ const modules: Array<{ href: string; title: string; desc: string; ready: boolean
   { href: '/leben/vertraege', title: 'Verträge & Kündigungen', desc: 'Fristen, Entwürfe, Freigaben', ready: true },
   { href: '/leben/dubai', title: 'Dubai', desc: 'Umzug und Wohnung', ready: true },
   { href: '/leben/finanzen', title: 'Finanzen', desc: 'Konten, Rechnungen, Prognose', ready: false },
+  { href: '/kalender', title: 'Kalender', desc: 'Woche mit Reitern Mo–So', ready: true },
   { href: '/aufgaben', title: 'Alle Aufgaben', desc: 'Vollständige Liste', ready: true },
   { href: '/leben/einstellungen', title: 'Einstellungen', desc: 'Ruhezeiten, Erinnerungen, Daten', ready: true },
 ];

@@ -28,8 +28,9 @@ export function parseQuickCapture(input: string, now: Date, tz: string, defaultH
   const take = (re: RegExp) => { const m = re.exec(text); if (m) text = text.replace(m[0], ' '); return m; };
 
   let m: RegExpExecArray | null;
-  if ((m = take(/\bübermorgen\b/i))) day = addDays(2);
-  else if ((m = take(/\bmorgen\b/i))) day = addDays(1);
+  // \b kennt keine Umlaute („ü“ gilt in JS nicht als Wortzeichen) → Unicode-Grenzen
+  if ((m = take(/(?<!\p{L})übermorgen(?!\p{L})/iu))) day = addDays(2);
+  else if ((m = take(/(?<!\p{L})morgen(?!\p{L})/iu))) day = addDays(1);
   else if ((m = take(/\bheute\b/i))) day = addDays(0);
   else if ((m = take(/\bin (\d{1,3}) tag(?:en)?\b/i))) day = addDays(+m[1]);
   else if ((m = take(/\bnächste[nr]? woche\b/i))) { weekBased = nextWeekMonday(now, tz, defaultHour); assumptions.push('„nächste Woche" = Montag der nächsten Woche'); }
