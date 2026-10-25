@@ -344,10 +344,11 @@ async function zecBlockbook(base: string, address: string): Promise<ZecAccount |
 export async function loadZecAccount(address: string): Promise<ZecAccount> {
   if (fake()) return { address, zec: 12.5, pendingZec: 0, txCount: 2, moves: [{ txid: 'TESTZEC', date: new Date(Date.now() - 5 * 86_400_000), zec: 12.5, confirmed: true }], source: 'Test' };
   return cached(`zec:${address}`, 120_000, async () => {
+    // Blockchair zuerst (von Vercel aus erreichbar); Blockbook-Instanzen sperren Server-Abrufe meist (403) → nur Ausweich
+    try { const a = await zecBlockchair(address); if (a) return a; } catch (e) { console.error('[zec] blockchair', (e as Error).message); }
     for (const base of ZEC_BLOCKBOOK) {
       try { const a = await zecBlockbook(base, address); if (a) return a; } catch (e) { console.error('[zec]', base, (e as Error).message); }
     }
-    try { const a = await zecBlockchair(address); if (a) return a; } catch (e) { console.error('[zec] blockchair', (e as Error).message); }
     return { address, zec: NaN, pendingZec: 0, txCount: 0, moves: [], error: 'Zcash-Netz gerade nicht erreichbar.' };
   });
 }
