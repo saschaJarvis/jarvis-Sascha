@@ -7,6 +7,7 @@ import { UATOM_PER_ATOM } from '@/lib/crypto/atom';
 import { XLM_STABLES } from '@/lib/crypto/xlm';
 import { LITOSHI_PER_LTC } from '@/lib/crypto/ltc';
 import { isDescriptor } from '@/lib/crypto/xpub';
+import { LAMPORTS_PER_SOL, SOL_TOKENS } from '@/lib/crypto/sol';
 import { decodeAccountInfo, dotPublicKey, PLANCK_PER_DOT, systemAccountKey } from '@/lib/crypto/dot';
 import { blockbookLoad, type BbAccount } from './blockbook';
 import { LOVELACE_PER_ADA, stakeAddressOf } from '@/lib/crypto/ada';
@@ -100,9 +101,9 @@ export async function loadXrpAccount(address: string): Promise<XrpAccount> {
   });
 }
 
-export type Coin = 'xrp' | 'eth' | 'btc' | 'ada' | 'algo' | 'zec' | 'atom' | 'xlm' | 'ltc' | 'dot' | 'vet';
+export type Coin = 'xrp' | 'eth' | 'btc' | 'ada' | 'algo' | 'zec' | 'atom' | 'xlm' | 'ltc' | 'dot' | 'vet' | 'sol';
 /** Kurs-Kürzel: Ketten + Tokens mit eigenem Kurs (z. B. Quant auf Ethereum) */
-export type PriceCoin = Coin | 'qnt' | 'fet' | 'link';
+export type PriceCoin = Coin | 'qnt' | 'fet' | 'link' | 'render';
 
 /** Alle Wallets des Nutzers (je Kette eine Tabelle, nur öffentliche Adressen). */
 export const WALLETS_SQL = `select id, chain, address, label, created_at from (
@@ -116,10 +117,11 @@ export const WALLETS_SQL = `select id, chain, address, label, created_at from (
   union all select id, 'xlm'::text, address, label, created_at from xlm_wallets where deleted_at is null
   union all select id, 'ltc'::text, address, label, created_at from ltc_wallets where deleted_at is null
   union all select id, 'dot'::text, address, label, created_at from dot_wallets where deleted_at is null
-  union all select id, 'vet'::text, address, label, created_at from vet_wallets where deleted_at is null) w order by created_at`;
-const GECKO: Record<PriceCoin, string> = { xrp: 'ripple', eth: 'ethereum', btc: 'bitcoin', ada: 'cardano', algo: 'algorand', zec: 'zcash', atom: 'cosmos', xlm: 'stellar', ltc: 'litecoin', dot: 'polkadot', vet: 'vechain', qnt: 'quant-network', fet: 'fetch-ai', link: 'chainlink' };
+  union all select id, 'vet'::text, address, label, created_at from vet_wallets where deleted_at is null
+  union all select id, 'sol'::text, address, label, created_at from sol_wallets where deleted_at is null) w order by created_at`;
+const GECKO: Record<PriceCoin, string> = { xrp: 'ripple', eth: 'ethereum', btc: 'bitcoin', ada: 'cardano', algo: 'algorand', zec: 'zcash', atom: 'cosmos', xlm: 'stellar', ltc: 'litecoin', dot: 'polkadot', vet: 'vechain', sol: 'solana', qnt: 'quant-network', fet: 'fetch-ai', link: 'chainlink', render: 'render-token' };
 
-const KRAKEN_PAIR: Record<PriceCoin, string> = { btc: 'XBT', eth: 'ETH', xrp: 'XRP', ada: 'ADA', algo: 'ALGO', zec: 'ZEC', atom: 'ATOM', xlm: 'XLM', ltc: 'LTC', dot: 'DOT', vet: 'VET', qnt: 'QNT', fet: 'FET', link: 'LINK' };
+const KRAKEN_PAIR: Record<PriceCoin, string> = { btc: 'XBT', eth: 'ETH', xrp: 'XRP', ada: 'ADA', algo: 'ALGO', zec: 'ZEC', atom: 'ATOM', xlm: 'XLM', ltc: 'LTC', dot: 'DOT', vet: 'VET', sol: 'SOL', qnt: 'QNT', fet: 'FET', link: 'LINK', render: 'RENDER' };
 const PRICE_TTL = 20; // Sekunden – „quasi Echtzeit“; Kraken erlaubt ~1 Abfrage/s je IP
 
 /**
@@ -127,10 +129,10 @@ const PRICE_TTL = 20; // Sekunden – „quasi Echtzeit“; Kraken erlaubt ~1 Ab
  * letzter Handelspreis in EUR und USD, dazu die 24-h-Veränderung aus Stundenkerzen.
  * Ausweich: CoinGecko (Durchschnitt mehrerer Börsen, inkl. 24-h-Änderung). AED über die USD-Bindung.
  */
-export async function coinPrices(coins: readonly PriceCoin[] = ['xrp', 'eth', 'btc', 'ada', 'algo', 'zec', 'atom', 'xlm', 'ltc', 'dot', 'vet', 'qnt', 'fet', 'link']): Promise<Partial<Record<PriceCoin, Price>>> {
+export async function coinPrices(coins: readonly PriceCoin[] = ['xrp', 'eth', 'btc', 'ada', 'algo', 'zec', 'atom', 'xlm', 'ltc', 'dot', 'vet', 'sol', 'qnt', 'fet', 'link', 'render']): Promise<Partial<Record<PriceCoin, Price>>> {
   if (fake()) {
     const t = (eur: number, usd: number, change24h: number) => ({ eur, usd, aed: usd * AED_PER_USD, source: 'Test', at: new Date(), change24h });
-    return { xrp: t(2, 2.2, 0.1), eth: t(3000, 3300, -0.02), btc: t(90000, 100000, 0.01), ada: t(0.6, 0.7, 0), algo: t(0.2, 0.22, 0.05), zec: t(40, 44, 0.02), atom: t(4, 4.4, -0.01), xlm: t(0.3, 0.33, 0.01), ltc: t(80, 88, 0.01), dot: t(4, 4.4, 0.02), vet: t(0.006, 0.0067, 0.01), qnt: t(80, 90, -0.03), fet: t(0.5, 0.55, 0.01), link: t(10, 11, 0.01) };
+    return { xrp: t(2, 2.2, 0.1), eth: t(3000, 3300, -0.02), btc: t(90000, 100000, 0.01), ada: t(0.6, 0.7, 0), algo: t(0.2, 0.22, 0.05), zec: t(40, 44, 0.02), atom: t(4, 4.4, -0.01), xlm: t(0.3, 0.33, 0.01), ltc: t(80, 88, 0.01), dot: t(4, 4.4, 0.02), vet: t(0.006, 0.0067, 0.01), sol: t(90, 100, 0.01), qnt: t(80, 90, -0.03), fet: t(0.5, 0.55, 0.01), link: t(10, 11, 0.01), render: t(1.5, 1.7, 0.01) };
   }
   const out: Partial<Record<PriceCoin, Price>> = {};
   if (!coins.length) return out;
@@ -555,5 +557,52 @@ export async function loadVetAccount(address: string): Promise<VetAccount> {
       } catch (e) { console.error('[vet]', base, (e as Error).message); }
     }
     return { address, vet: NaN, vtho: 0, error: 'VeChain-Netz gerade nicht erreichbar.' };
+  });
+}
+
+// ---------- Solana (SOL + bekannte SPL-Tokens wie RENDER, USDC, USDT) ----------
+export interface SolAccount { address: string; sol: number; staked: number; tokens: Array<{ symbol: string; amount: number; price: PriceCoin | 'usd' }>; error?: string }
+const SOL_RPC = ['https://api.mainnet-beta.solana.com', 'https://solana-rpc.publicnode.com'];
+const TOKEN_PROGRAMS = ['TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA', 'TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb'];
+
+async function solRpc<T>(method: string, params: unknown[]): Promise<T> {
+  let last = 'nicht erreichbar';
+  for (const url of SOL_RPC) {
+    try {
+      const r = await fetch(url, { method: 'POST', headers: { 'content-type': 'application/json' }, cache: 'no-store',
+        body: JSON.stringify({ jsonrpc: '2.0', id: 1, method, params }), signal: AbortSignal.timeout(8000) });
+      if (!r.ok) { last = `HTTP ${r.status}`; continue; }
+      const j = (await r.json()) as { result?: T; error?: { message?: string } };
+      if (j.error || j.result === undefined) { last = j.error?.message ?? 'leer'; continue; }
+      return j.result;
+    } catch (e) { last = (e as Error).message; }
+  }
+  throw new Error(last);
+}
+
+export async function loadSolAccount(address: string): Promise<SolAccount> {
+  if (fake()) return { address, sol: 2, staked: 0, tokens: [{ symbol: 'RENDER', amount: 100, price: 'render' }] };
+  return cached(`sol:${address}`, 120_000, async () => {
+    try {
+      type TokAcc = { value: Array<{ account: { data: { parsed: { info: { mint: string; tokenAmount: { uiAmount: number | null } } } } } }> };
+      const [bal, ...toks] = await Promise.all([
+        solRpc<{ value: number }>('getBalance', [address]),
+        ...TOKEN_PROGRAMS.map((programId) => solRpc<TokAcc>('getTokenAccountsByOwner', [address, { programId }, { encoding: 'jsonParsed' }]).catch(() => ({ value: [] }) as TokAcc)),
+      ]);
+      // Gestakte SOL liegen in eigenen Stake-Konten (Abhebeberechtigter = diese Adresse, Offset 44)
+      const stakes = await solRpc<Array<{ account: { lamports: number } }>>('getProgramAccounts', ['Stake11111111111111111111111111111111111111',
+        { encoding: 'base64', dataSlice: { offset: 0, length: 0 }, filters: [{ memcmp: { offset: 44, bytes: address } }] }]).catch(() => []);
+      const sums = new Map<string, number>();
+      for (const t of toks.flatMap((x) => x.value)) {
+        const i = t.account.data.parsed.info;
+        if (SOL_TOKENS[i.mint]) sums.set(i.mint, (sums.get(i.mint) ?? 0) + (i.tokenAmount.uiAmount ?? 0));
+      }
+      const tokens = [...sums.entries()].filter(([, v]) => v > 0).map(([mint, amount]) => ({ symbol: SOL_TOKENS[mint].symbol, amount, price: SOL_TOKENS[mint].price as PriceCoin | 'usd' }));
+      const staked = stakes.reduce((n, s) => n + s.account.lamports, 0) / LAMPORTS_PER_SOL;
+      return { address, sol: bal.value / LAMPORTS_PER_SOL + staked, staked, tokens };
+    } catch (e) {
+      console.error('[sol]', (e as Error).message);
+      return { address, sol: NaN, staked: 0, tokens: [], error: 'Solana-Netz gerade nicht erreichbar.' };
+    }
   });
 }

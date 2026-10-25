@@ -10,7 +10,7 @@ export function AddWalletForm() {
   return (
     <form ref={ref} action={action} className="grid gap-3">
       <div>
-        <label className="label" htmlFor="w-addr">Öffentliche Adresse (BTC, ETH, XRP, ADA, ALGO, ZEC, ATOM, XLM, LTC, DOT oder VET)</label>
+        <label className="label" htmlFor="w-addr">Öffentliche Adresse (BTC, ETH, XRP, ADA, ALGO, ZEC, ATOM, XLM, LTC, DOT, VET oder SOL/RENDER)</label>
         <textarea id="w-addr" name="address" required autoComplete="off" autoCapitalize="off" spellCheck={false} maxLength={2000} rows={2}
           className="field mono text-sm" placeholder="bc1… / 0x… / r… / addr1… / t1… / cosmos1… / G… / M… / Ltub…" />
         <p className="mt-1 text-xs text-muted">In Ledger Live: Konto → „Empfangen“ → Adresse kopieren. Die Art erkennt Jarvis selbst (0x… mit Guthaben nur auf VeChain wird als VeChain erkannt). Für ein ganzes Litecoin-Konto: Konto bearbeiten → Erweitert → den Schlüssel (Ltub…) oder den ganzen Text einfügen.</p>
