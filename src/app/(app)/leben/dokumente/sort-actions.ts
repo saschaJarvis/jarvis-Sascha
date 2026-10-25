@@ -6,6 +6,7 @@ import { db } from '@/server/repo';
 import { friendlyDbError, withService } from '@/server/db';
 import { FOLDERS, FOLDER_LABEL, storeUpload, type Folder } from '@/server/storage';
 import { kickStatements } from '@/server/statements';
+import { kickMetalInvoices } from '@/server/metal-invoices';
 import { AI_CONSENT, AI_CONSENT_TEXT, analyzeDocument, claudeAvailable, CLAUDE_MODEL, guessFolderFromName, type DocAnalysis } from '@/server/claude';
 
 export interface SortResult {
@@ -61,6 +62,11 @@ export async function sortUploadAction(_: SortState, fd: FormData): Promise<Sort
       }
 
       let taskCount = 0;
+      // Edelmetall-Käufe immer nach „Edelmetalle“ – dort liest Jarvis die Positionen fürs Gesamtvermögen aus
+      if (a && a.folder !== 'metals' && /rechnung|lieferschein|kauf|auftrag|invoice/i.test(a.kind)
+          && /gold|silber|silver|platin|philharmoniker|maple.?leaf|kr(ue|ü)gerrand|britannia|k(ae|ä)nguru|eagle|feinunze|\b1 ?oz\b|barren|m(ue|ü)nze/i.test(`${a.title} ${a.summary} ${a.issuer ?? ''}`)) {
+        a = { ...a, folder: 'metals' };
+      }
       if (a) {
         const an = a;
         await db(s).run(async (q) => {
@@ -104,6 +110,12 @@ export async function sortUploadAction(_: SortState, fd: FormData): Promise<Sort
       if (n) statementNote = `${n === 1 ? 'Kontoauszug wird' : `${n} Kontoauszüge werden`} jetzt ausgewertet – in 1–3 Minuten unter Finanzen.`;
     } catch (e) { console.error('[statement] kick', e); }
   }
+  if (results.some((r) => r.ok && r.folder === 'metals')) {
+    try {
+      const n = await kickMetalInvoices(s);
+      if (n) statementNote = `${statementNote ? `${statementNote} ` : ''}${n === 1 ? 'Edelmetall-Rechnung wird' : `${n} Edelmetall-Rechnungen werden`} jetzt ausgelesen – in etwa einer Minute unter Finanzen.`;
+    } catch (e) { console.error('[metal-invoice] kick', e); }
+  }
   revalidatePath('/', 'layout');
   if (statementNote) return { results, note: statementNote };
   const note = !claudeAvailable() ? 'Claude ist noch nicht verbunden – sortiert wurde nur nach Dateiname.'
@@ -117,5 +129,7 @@ export async function moveDocumentAction(fd: FormData): Promise<void> {
   const id = z.string().uuid().parse(fd.get('id'));
   const folder = z.enum(FOLDERS).parse(fd.get('folder'));
   await db(s).run((q) => q(`update documents set folder = $2, certainty = 'verified' where id = $1`, [id, folder]));
+  if (folder === 'metals') await kickMetalInvoices(s).catch((e) => console.error('[metal-invoice] kick', e));
+  if (folder === 'banks') await kickStatements(s).catch((e) => console.error('[statement] kick', e));
   revalidatePath('/', 'layout');
 }
