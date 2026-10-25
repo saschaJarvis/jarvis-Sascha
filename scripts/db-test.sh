@@ -18,7 +18,7 @@ for f in supabase/migrations/*.sql; do
 done
 "${PSQL[@]}" -f supabase/tests/05_test_helpers.sql
 
-for f in supabase/tests/1*.sql; do
+for f in supabase/tests/[12]*.sql; do
   echo "→ Test $(basename "$f")"
   "${PSQL[@]}" -f "$f" >/dev/null
 done
