@@ -7,7 +7,8 @@ import { primaryActionFor } from '@/lib/domain/taskStateMachine';
 import { CANCELLATION_STEPS_DE } from '@/lib/domain/cancellationStateMachine';
 import { checkLtv } from '@/lib/domain/property';
 import { Certainty, formatDue } from '@/components/ui';
-import { Core, Empty, Metric, Panel, Segments } from '@/components/hud';
+import { Empty, Metric, Panel, Segments } from '@/components/hud';
+import { MoonCore, MoonFacts } from '@/components/moon-core';
 import { TransitionButton } from '@/components/task-actions';
 import { SnoozeMenu } from '@/components/snooze';
 import { QuickCapture } from '@/components/quick-capture';
@@ -146,8 +147,8 @@ export default async function BridgePage() {
                 <CoreStat label="Nachweise" value={evidence.length} sub="Beleg fehlt" tone={evidence.length ? 'warn' : 'muted'} href="/eingang" />
               </div>
               <div className="relative">
-                <div className="hidden sm:block"><Core size={300} /></div>
-                <div className="sm:hidden"><Core size={150} /></div>
+                <div className="hidden sm:block"><MoonCore size={300} initialNow={now.getTime()} /></div>
+                <div className="sm:hidden"><MoonCore size={150} initialNow={now.getTime()} /></div>
               </div>
               <div className="grid gap-8">
                 <CoreStat label="Diese Woche" value={thisWeek.length} sub="mit Frist" tone="sea" href="/aufgaben" />
@@ -155,6 +156,8 @@ export default async function BridgePage() {
               </div>
             </div>
           </section>
+
+          <MoonFacts initialNow={now.getTime()} />
 
           {main && view.doThisNow ? (
             <section aria-labelledby="jetzt" className="card border-sea/60 shadow-[0_0_30px_rgba(63,210,255,.12)]">
