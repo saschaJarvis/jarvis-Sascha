@@ -1,6 +1,7 @@
 'use client';
-import { useEffect, useId, useMemo, useState } from 'react';
-import { DUBAI, limbRotationDeg, litPath, moonState, sunState, type MoonState, type SunState } from '@/lib/moon';
+import { useCallback, useEffect, useId, useMemo, useState } from 'react';
+import { SkySphere } from './sky-sphere';
+import { DUBAI, limbRotationDeg, litPath, moonState, sunState, sunVector, type MoonState, type SunState } from '@/lib/moon';
 
 /** Aktualisiert jede Minute; startet mit der Serverzeit, damit Server- und Browserbild identisch sind. */
 function useSky(initialNow: number): { now: Date; m: MoonState; s: SunState } {
@@ -67,7 +68,7 @@ function Ring({ s, m, showSun }: { s: SunState; m: MoonState; showSun: boolean }
   );
 }
 
-function Sun({ s, id }: { s: SunState; id: string }) {
+function Sun({ s, id, body }: { s: SunState; id: string; body: boolean }) {
   // Nahe am Horizont rötlicher (Morgen-/Abendsonne)
   const low = Math.max(0, Math.min(1, (12 - s.altitudeDeg) / 12));
   const core = low > 0.5 ? '#ffe2b0' : '#fffbe8';
@@ -89,13 +90,13 @@ function Sun({ s, id }: { s: SunState; id: string }) {
           return <polygon key={i} points={`${p(r1, -w / r1)} ${p(r2)} ${p(r1, w / r1)}`} fill={mid} fillOpacity={long ? 0.75 : 0.5} />;
         })}
       </g>
-      <circle cx="100" cy="100" r="44" fill={`url(#${id}-disk)`} />
-      <circle cx="100" cy="100" r="44" fill="none" stroke="#fff3c4" strokeOpacity=".5" strokeWidth=".6" />
+      {body && <circle cx="100" cy="100" r="44" fill={`url(#${id}-disk)`} />}
+      {body && <circle cx="100" cy="100" r="44" fill="none" stroke="#fff3c4" strokeOpacity=".5" strokeWidth=".6" />}
     </g>
   );
 }
 
-function Moon({ m, id }: { m: MoonState; id: string }) {
+function Moon({ m, id, body }: { m: MoonState; id: string; body: boolean }) {
   const R = 50;
   const rot = limbRotationDeg(m.brightLimbFromZenith);
   const lit = litPath(m.fraction, R);
@@ -119,12 +120,14 @@ function Moon({ m, id }: { m: MoonState; id: string }) {
         <mask id={`${id}-moon-lit`}><rect x={-R - 2} y={-R - 2} width={2 * R + 4} height={2 * R + 4} fill="black" />{lit && <path d={lit} fill="white" filter={`url(#${id}-terminator)`} transform={`rotate(${rot.toFixed(2)})`} />}</mask>
       </defs>
       <circle cx="100" cy="100" r="68" fill={`url(#${id}-moon-halo)`} />
-      <g transform="translate(100 100)" clipPath={`url(#${id}-moon-disk)`}>
-        {/* Nachtseite: schwach sichtbar (Erdschein) */}
-        <g opacity=".1">{surface}</g>
-        <g mask={`url(#${id}-moon-lit)`}>{surface}</g>
-      </g>
-      <circle cx="100" cy="100" r={R} fill="none" stroke="#bfe8ff" strokeOpacity=".25" strokeWidth=".5" />
+      {body && (
+        <g transform="translate(100 100)" clipPath={`url(#${id}-moon-disk)`}>
+          {/* Nachtseite: schwach sichtbar (Erdschein) */}
+          <g opacity=".1">{surface}</g>
+          <g mask={`url(#${id}-moon-lit)`}>{surface}</g>
+        </g>
+      )}
+      <circle cx="100" cy="100" r={R} fill="none" stroke="#bfe8ff" strokeOpacity=".2" strokeWidth=".5" />
     </g>
   );
 }
@@ -133,17 +136,28 @@ function Moon({ m, id }: { m: MoonState; id: string }) {
 export function MoonCore({ initialNow, className = '' }: { initialNow: number; className?: string }) {
   const { m, s } = useSky(initialNow);
   const uid = `sky${useId().replace(/[^a-zA-Z0-9]/g, '')}`;
+  const [gl, setGl] = useState<boolean | null>(null); // null = noch nicht geprüft → SVG zeigen
+  const onReady = useCallback((ok: boolean) => setGl(ok), []);
   const showSun = s.up;
+  const low = Math.max(0, Math.min(1, (12 - s.altitudeDeg) / 12));
   const label = showSun
     ? `Sonne über Dubai: ${Math.round(s.altitudeDeg)}° hoch, Richtung ${s.direction}, Untergang ${hhmm(s.sunset)}`
     : `Mond über Dubai: ${m.name}, ${Math.round(m.fraction * 100)} % beleuchtet, ${m.above ? `${Math.round(m.altitudeDeg)}° hoch Richtung ${m.direction}` : 'unter dem Horizont'}`;
+  const body = gl !== true;
+  const pct = showSun ? 44 : 50; // Durchmesser der Kugel in % der Kachel
   return (
-    <svg viewBox="0 0 200 200" role="img" aria-label={label} className={`aspect-square max-w-full ${className}`}>
-      <title>{label}</title>
-      <circle cx="100" cy="100" r="62" fill="none" stroke={showSun ? '#ffb547' : '#3fd2ff'} strokeOpacity=".2" strokeWidth=".5" />
-      {showSun ? <Sun s={s} id={uid} /> : <Moon m={m} id={uid} />}
-      <Ring s={s} m={m} showSun={showSun} />
-    </svg>
+    <div className={`relative aspect-square max-w-full ${className}`} role="img" aria-label={label} title={label}>
+      <svg viewBox="0 0 200 200" className="absolute inset-0 h-full w-full" aria-hidden="true">
+        <circle cx="100" cy="100" r="62" fill="none" stroke={showSun ? '#ffb547' : '#3fd2ff'} strokeOpacity=".2" strokeWidth=".5" />
+        {showSun ? <Sun s={s} id={uid} body={body} /> : <Moon m={m} id={uid} body={body} />}
+        <Ring s={s} m={m} showSun={showSun} />
+      </svg>
+      {gl !== false && (
+        <SkySphere mode={showSun ? 'sun' : 'moon'} sunDir={sunVector(m)} low={low} onReady={onReady}
+          className={`absolute transition-opacity duration-700 ${gl ? 'opacity-100' : 'opacity-0'}`}
+          style={{ left: `${(100 - pct) / 2}%`, top: `${(100 - pct) / 2}%`, width: `${pct}%`, height: `${pct}%` }} />
+      )}
+    </div>
   );
 }
 
