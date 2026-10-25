@@ -8,6 +8,7 @@ import { addressHint, isXrpAddress } from '@/lib/crypto/xrp';
 import { ethAddressHint, isEthAddress } from '@/lib/crypto/eth';
 import { btcAddressHint, isBtcAddress } from '@/lib/crypto/btc';
 import { adaAddressHint, isAdaAddress } from '@/lib/crypto/ada';
+import { algoAddressHint, isAlgoAddress } from '@/lib/crypto/algo';
 import { CURRENCIES, parseAmount } from '@/lib/domain/networth';
 
 export type WalletState = { error?: string; ok?: string } | undefined;
@@ -19,8 +20,11 @@ export async function addWalletAction(_: WalletState, fd: FormData): Promise<Wal
   let label = String(fd.get('label') ?? '').trim().slice(0, 40);
   const SECRET = '⚠️ Das sieht nach einer geheimen Wiederherstellungsphrase oder einem privaten Schlüssel aus. Es wurde NICHT gespeichert. Jarvis braucht nur die öffentliche Adresse. Gib deine 24 Wörter oder Schlüssel niemals irgendwo ein.';
   if (raw.split(/\s+/).length >= 12 || /^s[1-9A-HJ-NP-Za-km-z]{25,}$/.test(raw) || /^(0x)?[0-9a-fA-F]{64}$/.test(raw) || /^[xyzt]prv/i.test(raw) || /^[5KL][1-9A-HJ-NP-Za-km-z]{50,51}$/.test(raw)) return { error: SECRET };
-  let chain: 'xrp' | 'eth' | 'btc' | 'ada';
-  if (/^(addr1|addr_test1|stake1|Ae2|DdzFF)/.test(raw)) {
+  let chain: 'xrp' | 'eth' | 'btc' | 'ada' | 'algo';
+  if (/^[A-Za-z2-7]{58}$/.test(raw)) {
+    if (!isAlgoAddress(raw)) return { error: algoAddressHint(raw) ?? 'Keine gültige Algorand-Adresse.' };
+    chain = 'algo';
+  } else if (/^(addr1|addr_test1|stake1|Ae2|DdzFF)/.test(raw)) {
     if (!isAdaAddress(raw)) return { error: adaAddressHint(raw) ?? 'Keine gültige Cardano-Adresse.' };
     chain = 'ada';
   } else if (/^(1|3|bc1|[xyz]pub|tb1)/i.test(raw)) {
@@ -30,7 +34,7 @@ export async function addWalletAction(_: WalletState, fd: FormData): Promise<Wal
     if (!isEthAddress(raw)) return { error: ethAddressHint(raw) ?? 'Keine gültige Ethereum-Adresse (0x + 40 Zeichen).' };
     chain = 'eth';
   } else {
-    if (!isXrpAddress(raw)) return { error: addressHint(raw) ?? 'Keine gültige Adresse. Bitcoin beginnt mit 1, 3 oder bc1, Ethereum mit 0x, XRP mit r, Cardano mit addr1.' };
+    if (!isXrpAddress(raw)) return { error: addressHint(raw) ?? 'Keine gültige Adresse. Bitcoin beginnt mit 1, 3 oder bc1, Ethereum mit 0x, XRP mit r, Cardano mit addr1, Algorand hat 58 Großbuchstaben/Ziffern.' };
     chain = 'xrp';
   }
   if (!label || label === 'Ledger') label = `Ledger ${chain.toUpperCase()}`;
@@ -41,10 +45,12 @@ export async function addWalletAction(_: WalletState, fd: FormData): Promise<Wal
       ? q('insert into btc_wallets (user_id, address, label) values (auth.uid(), $1, $2)', [raw, label])
       : chain === 'ada'
       ? q('insert into ada_wallets (user_id, address, label) values (auth.uid(), $1, $2)', [raw, label])
+      : chain === 'algo'
+      ? q('insert into algo_wallets (user_id, address, label) values (auth.uid(), $1, $2)', [raw, label])
       : q('insert into crypto_wallets (user_id, chain, address, label) values (auth.uid(), $1, $2, $3)', [chain, raw, label]));
   } catch (e) {
     const m = e instanceof Error ? e.message : '';
-    if (/(crypto|eth|btc|ada)_wallets_unique/.test(m)) return { error: 'Diese Adresse ist schon eingetragen.' };
+    if (/(crypto|eth|btc|ada|algo)_wallets_unique/.test(m)) return { error: 'Diese Adresse ist schon eingetragen.' };
     if (/Höchstens 20/.test(m)) return { error: 'Höchstens 20 Wallets – bitte erst eines entfernen.' };
     return { error: friendlyDbError(e) };
   }
@@ -60,6 +66,7 @@ export async function removeWalletAction(fd: FormData): Promise<void> {
     await q('update eth_wallets set deleted_at = now() where id = $1 and deleted_at is null', [id]);
     await q('update btc_wallets set deleted_at = now() where id = $1 and deleted_at is null', [id]);
     await q('update ada_wallets set deleted_at = now() where id = $1 and deleted_at is null', [id]);
+    await q('update algo_wallets set deleted_at = now() where id = $1 and deleted_at is null', [id]);
   });
   revalidatePath('/', 'layout');
 }

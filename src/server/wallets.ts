@@ -3,6 +3,7 @@ import { DROPS_PER_XRP, toMove, type XrpMove } from '@/lib/crypto/xrp';
 import { balanceOfData, ETH_TOKENS, fromUnits } from '@/lib/crypto/eth';
 import { SATS_PER_BTC } from '@/lib/crypto/btc';
 import { LOVELACE_PER_ADA, stakeAddressOf } from '@/lib/crypto/ada';
+import { ALGO_STABLES, MICRO_PER_ALGO } from '@/lib/crypto/algo';
 import { priceAgo, relChange } from '@/lib/domain/change';
 import { AED_PER_USD } from './ext';
 
@@ -92,17 +93,18 @@ export async function loadXrpAccount(address: string): Promise<XrpAccount> {
   });
 }
 
-export type Coin = 'xrp' | 'eth' | 'btc' | 'ada';
+export type Coin = 'xrp' | 'eth' | 'btc' | 'ada' | 'algo';
 
 /** Alle Wallets des Nutzers (je Kette eine Tabelle, nur öffentliche Adressen). */
 export const WALLETS_SQL = `select id, chain, address, label, created_at from (
   select id, 'xrp'::text as chain, address, label, created_at from crypto_wallets where deleted_at is null
   union all select id, 'eth'::text, address, label, created_at from eth_wallets where deleted_at is null
   union all select id, 'btc'::text, address, label, created_at from btc_wallets where deleted_at is null
-  union all select id, 'ada'::text, address, label, created_at from ada_wallets where deleted_at is null) w order by created_at`;
-const GECKO: Record<Coin, string> = { xrp: 'ripple', eth: 'ethereum', btc: 'bitcoin', ada: 'cardano' };
+  union all select id, 'ada'::text, address, label, created_at from ada_wallets where deleted_at is null
+  union all select id, 'algo'::text, address, label, created_at from algo_wallets where deleted_at is null) w order by created_at`;
+const GECKO: Record<Coin, string> = { xrp: 'ripple', eth: 'ethereum', btc: 'bitcoin', ada: 'cardano', algo: 'algorand' };
 
-const KRAKEN_PAIR: Record<Coin, string> = { btc: 'XBT', eth: 'ETH', xrp: 'XRP', ada: 'ADA' };
+const KRAKEN_PAIR: Record<Coin, string> = { btc: 'XBT', eth: 'ETH', xrp: 'XRP', ada: 'ADA', algo: 'ALGO' };
 const PRICE_TTL = 20; // Sekunden – „quasi Echtzeit“; Kraken erlaubt ~1 Abfrage/s je IP
 
 /**
@@ -110,10 +112,10 @@ const PRICE_TTL = 20; // Sekunden – „quasi Echtzeit“; Kraken erlaubt ~1 Ab
  * letzter Handelspreis in EUR und USD, dazu die 24-h-Veränderung aus Stundenkerzen.
  * Ausweich: CoinGecko (Durchschnitt mehrerer Börsen, inkl. 24-h-Änderung). AED über die USD-Bindung.
  */
-export async function coinPrices(coins: readonly Coin[] = ['xrp', 'eth', 'btc', 'ada']): Promise<Partial<Record<Coin, Price>>> {
+export async function coinPrices(coins: readonly Coin[] = ['xrp', 'eth', 'btc', 'ada', 'algo']): Promise<Partial<Record<Coin, Price>>> {
   if (fake()) {
     const t = (eur: number, usd: number, change24h: number) => ({ eur, usd, aed: usd * AED_PER_USD, source: 'Test', at: new Date(), change24h });
-    return { xrp: t(2, 2.2, 0.1), eth: t(3000, 3300, -0.02), btc: t(90000, 100000, 0.01), ada: t(0.6, 0.7, 0) };
+    return { xrp: t(2, 2.2, 0.1), eth: t(3000, 3300, -0.02), btc: t(90000, 100000, 0.01), ada: t(0.6, 0.7, 0), algo: t(0.2, 0.22, 0.05) };
   }
   const out: Partial<Record<Coin, Price>> = {};
   if (!coins.length) return out;
@@ -270,5 +272,28 @@ export async function loadAdaAccount(address: string): Promise<AdaAccount> {
       console.error('[ada]', (e as Error).message);
       return { address, stake, ada: NaN, rewardsAda: 0, whole: false, delegatedPool: null, error: 'Cardano-Netz gerade nicht erreichbar.' };
     }
+  });
+}
+
+// ---------- Algorand ----------
+const ALGO_NODES = ['https://mainnet-api.algonode.cloud', 'https://mainnet-api.4160.nodely.dev'];
+
+export interface AlgoAccount { address: string; algo: number; minBalance: number; tokens: Array<{ symbol: string; amount: number }>; online: boolean; error?: string }
+
+export async function loadAlgoAccount(address: string): Promise<AlgoAccount> {
+  if (fake()) return { address, algo: 500, minBalance: 0.1, tokens: [{ symbol: 'USDC', amount: 100 }], online: false };
+  return cached(`algo:${address}`, 120_000, async () => {
+    for (const base of ALGO_NODES) {
+      try {
+        const r = await fetch(`${base}/v2/accounts/${address}?exclude=created-apps,created-assets,apps-local-state`, { cache: 'no-store', signal: AbortSignal.timeout(6000) });
+        if (r.status === 404) return { address, algo: 0, minBalance: 0, tokens: [], online: false };
+        if (!r.ok) continue;
+        const j = (await r.json()) as { amount?: number; 'min-balance'?: number; status?: string; assets?: Array<{ 'asset-id': number; amount: number }> };
+        const tokens = (j.assets ?? []).filter((a) => ALGO_STABLES[a['asset-id']] && a.amount > 0)
+          .map((a) => ({ symbol: ALGO_STABLES[a['asset-id']].symbol, amount: a.amount / 10 ** ALGO_STABLES[a['asset-id']].decimals }));
+        return { address, algo: (j.amount ?? 0) / MICRO_PER_ALGO, minBalance: (j['min-balance'] ?? 0) / MICRO_PER_ALGO, tokens, online: j.status === 'Online' };
+      } catch (e) { console.error('[algo]', base, (e as Error).message); }
+    }
+    return { address, algo: NaN, minBalance: 0, tokens: [], online: false, error: 'Algorand-Netz gerade nicht erreichbar.' };
   });
 }

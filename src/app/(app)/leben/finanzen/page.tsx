@@ -1,6 +1,6 @@
 import { requireUser } from '@/server/auth';
 import { db } from '@/server/repo';
-import { coinPrices, loadAdaAccount, loadBtcAccount, loadEthAccount, loadXrpAccount, WALLETS_SQL, type AdaAccount, type BtcAccount, type Coin, type EthAccount, type XrpAccount } from '@/server/wallets';
+import { coinPrices, loadAdaAccount, loadAlgoAccount, loadBtcAccount, loadEthAccount, loadXrpAccount, WALLETS_SQL, type AdaAccount, type AlgoAccount, type BtcAccount, type Coin, type EthAccount, type XrpAccount } from '@/server/wallets';
 import { AED_PER_USD } from '@/lib/domain/networth';
 import { PageTitle, Section } from '@/components/ui';
 import { timeAgo } from '@/lib/news';
@@ -17,7 +17,7 @@ const FORM: Record<string, string> = { bar: 'Barren', coin: 'Münze', jewelry: '
 export const dynamic = 'force-dynamic';
 
 const nf = (n: number, d = 2) => n.toLocaleString('de-DE', { minimumFractionDigits: d, maximumFractionDigits: d });
-const DEC: Record<Coin, number> = { xrp: 2, eth: 4, btc: 8, ada: 2 };
+const DEC: Record<Coin, number> = { xrp: 2, eth: 4, btc: 8, ada: 2, algo: 2 };
 const short = (a: string) => `${a.slice(0, 6)}…${a.slice(-4)}`;
 
 export default async function FinancePage() {
@@ -25,11 +25,11 @@ export default async function FinancePage() {
   const wallets = await db(s).run((q) => q<{ id: string; chain: Coin; address: string; label: string }>(
     WALLETS_SQL));
   const [views, prices, nw] = await Promise.all([
-    Promise.all(wallets.map((w): Promise<XrpAccount | EthAccount | BtcAccount | AdaAccount> => (w.chain === 'eth' ? loadEthAccount(w.address) : w.chain === 'btc' ? loadBtcAccount(w.address) : w.chain === 'ada' ? loadAdaAccount(w.address) : loadXrpAccount(w.address)))),
+    Promise.all(wallets.map((w): Promise<XrpAccount | EthAccount | BtcAccount | AdaAccount | AlgoAccount> => (w.chain === 'eth' ? loadEthAccount(w.address) : w.chain === 'btc' ? loadBtcAccount(w.address) : w.chain === 'ada' ? loadAdaAccount(w.address) : w.chain === 'algo' ? loadAlgoAccount(w.address) : loadXrpAccount(w.address)))),
     coinPrices([...new Set(wallets.map((w) => w.chain))]),
     loadNetWorth(s),
   ]);
-  const EXPLORER: Record<Coin, (a: string) => string> = { xrp: (a) => `https://livenet.xrpl.org/accounts/${a}`, eth: (a) => `https://etherscan.io/address/${a}`, btc: (a) => `https://mempool.space/address/${a}`, ada: (a) => `https://cardanoscan.io/address/${a}` };
+  const EXPLORER: Record<Coin, (a: string) => string> = { xrp: (a) => `https://livenet.xrpl.org/accounts/${a}`, eth: (a) => `https://etherscan.io/address/${a}`, btc: (a) => `https://mempool.space/address/${a}`, ada: (a) => `https://cardanoscan.io/address/${a}`, algo: (a) => `https://allo.info/account/${a}` };
   const now = new Date();
 
   return (
@@ -103,7 +103,7 @@ export default async function FinancePage() {
           <div className="card mb-3 grid gap-1">
             <p className="eyebrow">Krypto gesamt</p>
             <p className="text-2xl font-bold">{nf(nw.crypto.aed, 0)} AED</p>
-            <p className="text-muted">{nw.eurAed ? `≈ ${nf(nw.crypto.aed / nw.eurAed, 0)} € · ` : ''}{Object.entries(nw.crypto.holdings).filter(([, v]) => v != null).sort(([a], [b]) => ['BTC', 'ETH', 'XRP', 'ADA', 'USDT', 'USDC'].indexOf(a) - ['BTC', 'ETH', 'XRP', 'ADA', 'USDT', 'USDC'].indexOf(b)).map(([k, v]) => `${nf(v ?? 0, k === 'BTC' ? 8 : k === 'ETH' ? 4 : 2)} ${k}`).join(' · ')}</p>
+            <p className="text-muted">{nw.eurAed ? `≈ ${nf(nw.crypto.aed / nw.eurAed, 0)} € · ` : ''}{Object.entries(nw.crypto.holdings).filter(([, v]) => v != null).sort(([a], [b]) => ['BTC', 'ETH', 'XRP', 'ADA', 'ALGO', 'USDT', 'USDC'].indexOf(a) - ['BTC', 'ETH', 'XRP', 'ADA', 'ALGO', 'USDT', 'USDC'].indexOf(b)).map(([k, v]) => `${nf(v ?? 0, k === 'BTC' ? 8 : k === 'ETH' ? 4 : 2)} ${k}`).join(' · ')}</p>
             {nw.crypto.error && <p className="text-sm text-warn">Ein Teil ist gerade ohne Kurs oder Netz – nicht mitgezählt.</p>}
             {nw.crypto.change && <div className="mt-1"><CryptoChange ch={nw.crypto.change} asOf={nw.crypto.asOf} label="24 h" /></div>}
             {nw.crypto.coins.length > 0 && (
@@ -144,7 +144,8 @@ export default async function FinancePage() {
             const e = w.chain === 'eth' ? (v as EthAccount) : null;
             const b = w.chain === 'btc' ? (v as BtcAccount) : null;
             const c = w.chain === 'ada' ? (v as AdaAccount) : null;
-            const amount = x ? x.xrp : e ? e.eth : b ? b.btc : c!.ada;
+            const g = w.chain === 'algo' ? (v as AlgoAccount) : null;
+            const amount = x ? x.xrp : e ? e.eth : b ? b.btc : c ? c.ada : g!.algo;
             const stableUsd = e ? e.tokens.reduce((n, t) => n + (Number.isFinite(t.amount) ? t.amount : 0), 0) : 0;
             return (
               <li key={w.id} className="card grid gap-2">
@@ -166,6 +167,11 @@ export default async function FinancePage() {
                   <p className="text-sm">{e.tokens.map((t) => Number.isFinite(t.amount) ? `+ ${nf(t.amount, 2)} ${t.symbol}` : `${t.symbol}: nicht abrufbar`).join(' · ')}</p>
                 )}
                 {e && !e.error && <p className="text-xs text-muted">Gezählt: ETH, USDT und USDC. Andere Tokens/NFTs siehst du über den Etherscan-Link.</p>}
+                {g && !g.error && (
+                  <p className="text-xs text-muted">
+                    {g.tokens.length ? `${g.tokens.map((t) => `+ ${nf(t.amount, 2)} ${t.symbol}`).join(' · ')} · ` : ''}Davon {nf(g.minBalance, 2)} ALGO als Mindestguthaben gebunden.{g.online ? ' Nimmt am Konsens teil (Staking).' : ''}
+                  </p>
+                )}
                 {c && !c.error && (
                   <p className="text-xs text-muted">
                     {c.whole ? `Ganzes Cardano-Konto (alle Adressen) inkl. ${nf(c.rewardsAda, 2)} ADA Staking-Belohnungen.` : 'Nur diese Adresse (ohne Staking-Teil).'}
@@ -233,7 +239,7 @@ export default async function FinancePage() {
         </ul>
 
         <div className="mt-3">
-          <ConnectSection initialOpen={wallets.length === 0} title="+ Wallet-Adresse hinzufügen (BTC / ETH / XRP / ADA)">
+          <ConnectSection initialOpen={wallets.length === 0} title="+ Wallet-Adresse hinzufügen (BTC / ETH / XRP / ADA / ALGO)">
             <div className="mt-3"><AddWalletForm /></div>
           </ConnectSection>
         </div>

@@ -8,7 +8,7 @@ test('Krypto nur ansehen: Seed wird abgewiesen, Tippfehler erkannt, Adresse zeig
   await page.goto('/leben/finanzen');
   await expect(page.getByText(/kann damit nichts versenden/)).toBeVisible();
 
-  const addr = page.getByLabel('Öffentliche Adresse (BTC, ETH, XRP oder ADA)');
+  const addr = page.getByLabel('Öffentliche Adresse (BTC, ETH, XRP, ADA oder ALGO)');
   await addr.fill('abandon ability able about above absent absorb abstract absurd abuse access accident');
   await page.getByRole('button', { name: 'Adresse hinzufügen' }).click();
   await expect(page.getByText(/NICHT gespeichert/)).toBeVisible();
@@ -27,7 +27,7 @@ test('Krypto nur ansehen: Seed wird abgewiesen, Tippfehler erkannt, Adresse zeig
   await expect(page.getByText('+250,00 XRP')).toBeVisible();
 
   // Ethereum: privater Schlüssel wird abgewiesen, Adresse mit Prüfsumme angenommen, Art automatisch erkannt
-  await page.getByText('+ Wallet-Adresse hinzufügen (BTC / ETH / XRP / ADA)').click();
+  await page.getByText('+ Wallet-Adresse hinzufügen (BTC / ETH / XRP / ADA / ALGO)').click();
   await addr.fill('0x' + '4c0883a69102937d6231471b5dbb6204fe5129617082792ae468d01a3f362318');
   await page.getByRole('button', { name: 'Adresse hinzufügen' }).click();
   await expect(page.getByText(/NICHT gespeichert/)).toBeVisible();
@@ -43,7 +43,7 @@ test('Krypto nur ansehen: Seed wird abgewiesen, Tippfehler erkannt, Adresse zeig
   await expect(page.getByRole('link', { name: /0x11A4…7886/ })).toHaveAttribute('href', /etherscan\.io\/address\/0x11A4/);
 
   // Bitcoin: WIF-Privatschlüssel abgewiesen, Prüfsumme geprüft, P2SH-Adresse angenommen
-  await page.getByText('+ Wallet-Adresse hinzufügen (BTC / ETH / XRP / ADA)').click();
+  await page.getByText('+ Wallet-Adresse hinzufügen (BTC / ETH / XRP / ADA / ALGO)').click();
   await addr.fill('5HueCGU8rMjxEXxiPuD5BDku4MkFqeZyd4dZ1jvhTVqvbTLvyTJ');
   await page.getByRole('button', { name: 'Adresse hinzufügen' }).click();
   await expect(page.getByText(/NICHT gespeichert/)).toBeVisible();
@@ -58,7 +58,7 @@ test('Krypto nur ansehen: Seed wird abgewiesen, Tippfehler erkannt, Adresse zeig
   await expect(page.getByRole('link', { name: /33ewns…EKUU/ })).toHaveAttribute('href', /mempool\.space\/address\/33ewns/);
 
   // Cardano: Stake-Adresse abgewiesen, Basisadresse angenommen → ganzes Konto inkl. Belohnungen
-  await page.getByText('+ Wallet-Adresse hinzufügen (BTC / ETH / XRP / ADA)').click();
+  await page.getByText('+ Wallet-Adresse hinzufügen (BTC / ETH / XRP / ADA / ALGO)').click();
   await addr.fill('stake1uyehkck0lajq8gr28t9uxnuvgcqrc6070x3k9r8048z8y5gh6ffgw');
   await page.getByRole('button', { name: 'Adresse hinzufügen' }).click();
   await expect(page.getByText(/Das ist eine Stake-Adresse/)).toBeVisible();
@@ -68,6 +68,18 @@ test('Krypto nur ansehen: Seed wird abgewiesen, Tippfehler erkannt, Adresse zeig
   await page.reload();
   await expect(page.getByText('1.000,00 ADA', { exact: true })).toBeVisible();
   await expect(page.getByText(/Ganzes Cardano-Konto .* 12,50 ADA Staking-Belohnungen/)).toBeVisible();
+
+  // Algorand: Tippfehler erkannt, Adresse angenommen
+  await page.getByText('+ Wallet-Adresse hinzufügen (BTC / ETH / XRP / ADA / ALGO)').click();
+  await addr.fill('55DXJK2IX7HELJKDX54YPUELBUXQKXOH74GKTVU4SEK46TDGZX32L3Y5PY');
+  await page.getByRole('button', { name: 'Adresse hinzufügen' }).click();
+  await expect(page.getByText(/Algorand-Adresse ist nicht gültig/)).toBeVisible();
+  await addr.fill('54DXJK2IX7HELJKDX54YPUELBUXQKXOH74GKTVU4SEK46TDGZX32L3Y5PY');
+  await page.getByRole('button', { name: 'Adresse hinzufügen' }).click();
+  await expect(page.getByText(/„Ledger ALGO“ hinzugefügt/)).toBeVisible();
+  await page.reload();
+  await expect(page.getByText('500,00 ALGO', { exact: true })).toBeVisible();
+  await expect(page.getByText(/\+ 100,00 USDC · Davon 0,10 ALGO als Mindestguthaben/)).toBeVisible();
 
   // 24-h-Veränderung (Testkurse: XRP +10 %, ETH −2 %, BTC +1 %, ADA ±0)
   const row = (c: string) => page.locator('tr', { has: page.getByRole('cell', { name: c, exact: true }) });

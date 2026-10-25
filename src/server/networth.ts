@@ -2,7 +2,7 @@ import 'server-only';
 import { db } from './repo';
 import type { Session } from './auth';
 import { getFx } from './ext';
-import { coinPrices, loadAdaAccount, loadBtcAccount, loadEthAccount, loadXrpAccount, WALLETS_SQL, type Coin } from './wallets';
+import { coinPrices, loadAdaAccount, loadAlgoAccount, loadBtcAccount, loadEthAccount, loadXrpAccount, WALLETS_SQL, type Coin } from './wallets';
 import { goldValueUsd, sumParts, toAed, AED_PER_USD } from '@/lib/domain/networth';
 import { portfolioChange } from '@/lib/domain/change';
 
@@ -66,6 +66,10 @@ export async function loadNetWorth(s: Session): Promise<NetWorth> {
   const chains = [...new Set(rows.wallets.map((w) => w.chain))];
   const [views, prices] = await Promise.all([
     Promise.all(rows.wallets.map(async (w) => {
+      if (w.chain === 'algo') {
+        const a = await loadAlgoAccount(w.address);
+        return { error: !!a.error, native: { coin: 'algo' as Coin, amount: a.algo }, stable: a.tokens.reduce((n, t) => n + t.amount, 0), tokens: a.tokens };
+      }
       if (w.chain === 'ada') {
         const a = await loadAdaAccount(w.address);
         return { error: !!a.error, native: { coin: 'ada' as Coin, amount: a.ada }, stable: 0, tokens: [] as Array<{ symbol: string; amount: number }> };

@@ -10,7 +10,7 @@ export function AddWalletForm() {
   return (
     <form ref={ref} action={action} className="grid gap-3">
       <div>
-        <label className="label" htmlFor="w-addr">Öffentliche Adresse (BTC, ETH, XRP oder ADA)</label>
+        <label className="label" htmlFor="w-addr">Öffentliche Adresse (BTC, ETH, XRP, ADA oder ALGO)</label>
         <input id="w-addr" name="address" required autoComplete="off" autoCapitalize="off" spellCheck={false} maxLength={120}
           className="field mono text-sm" placeholder="bc1… / 0x… / r… / addr1…" />
         <p className="mt-1 text-xs text-muted">In Ledger Live: Konto → „Empfangen“ → Adresse kopieren. Die Art erkennt Jarvis selbst.</p>
