@@ -7,7 +7,7 @@ const nf = (n: number, d = 0) => n.toLocaleString('de-DE', { minimumFractionDigi
 export function NetWorthBlock({ nw, compact = false }: { nw: NetWorth; compact?: boolean }) {
   const parts = [
     { key: 'konten', label: 'Konten', aed: nw.accounts.aed, n: nw.accounts.count, sub: `${nw.accounts.count} Konto${nw.accounts.count === 1 ? '' : 'en'}`, color: 'bg-sea' },
-    { key: 'krypto', label: 'Krypto', aed: nw.crypto.aed, n: nw.crypto.count, sub: nw.crypto.count ? Object.entries(nw.crypto.holdings).filter(([, v]) => v != null).sort(([a], [b]) => ['BTC', 'ETH', 'XRP', 'ADA', 'ALGO', 'ZEC', 'QNT', 'FET', 'USDT', 'USDC'].indexOf(a) - ['BTC', 'ETH', 'XRP', 'ADA', 'ALGO', 'ZEC', 'QNT', 'FET', 'USDT', 'USDC'].indexOf(b)).map(([k, v]) => `${nf(v ?? 0, k === 'BTC' ? 4 : k === 'ETH' || k === 'QNT' || k === 'ZEC' ? 2 : k === 'FET' ? 0 : 0)} ${k}`).join(' · ') || '0' : 'keine Wallets', color: 'bg-good' },
+    { key: 'krypto', label: 'Krypto', aed: nw.crypto.aed, n: nw.crypto.count, sub: nw.crypto.count ? Object.entries(nw.crypto.holdings).filter(([, v]) => v != null).sort(([a], [b]) => ['BTC', 'ETH', 'XRP', 'ADA', 'ALGO', 'ZEC', 'ATOM', 'QNT', 'FET', 'USDT', 'USDC'].indexOf(a) - ['BTC', 'ETH', 'XRP', 'ADA', 'ALGO', 'ZEC', 'ATOM', 'QNT', 'FET', 'USDT', 'USDC'].indexOf(b)).map(([k, v]) => `${nf(v ?? 0, k === 'BTC' ? 4 : k === 'ETH' || k === 'QNT' || k === 'ZEC' || k === 'ATOM' ? 2 : k === 'FET' ? 0 : 0)} ${k}`).join(' · ') || '0' : 'keine Wallets', color: 'bg-good' },
     { key: 'gold', label: 'Gold', aed: nw.gold.aed, n: nw.gold.count, sub: nw.gold.count ? `${nf(nw.gold.grams, nw.gold.grams % 1 ? 1 : 0)} g` : 'kein Gold', color: 'bg-warn' },
   ];
   const pos = parts.reduce((n, p) => n + Math.max(0, p.aed), 0);

@@ -3,6 +3,7 @@ import { DROPS_PER_XRP, toMove, type XrpMove } from '@/lib/crypto/xrp';
 import { balanceOfData, decodeAbiString, ETH_TOKENS, fromUnits } from '@/lib/crypto/eth';
 import { SATS_PER_BTC } from '@/lib/crypto/btc';
 import { ZAT_PER_ZEC } from '@/lib/crypto/zec';
+import { UATOM_PER_ATOM } from '@/lib/crypto/atom';
 import { LOVELACE_PER_ADA, stakeAddressOf } from '@/lib/crypto/ada';
 import { ALGO_STABLES, MICRO_PER_ALGO } from '@/lib/crypto/algo';
 import { priceAgo, relChange } from '@/lib/domain/change';
@@ -94,7 +95,7 @@ export async function loadXrpAccount(address: string): Promise<XrpAccount> {
   });
 }
 
-export type Coin = 'xrp' | 'eth' | 'btc' | 'ada' | 'algo' | 'zec';
+export type Coin = 'xrp' | 'eth' | 'btc' | 'ada' | 'algo' | 'zec' | 'atom';
 /** Kurs-Kürzel: Ketten + Tokens mit eigenem Kurs (z. B. Quant auf Ethereum) */
 export type PriceCoin = Coin | 'qnt' | 'fet';
 
@@ -105,10 +106,11 @@ export const WALLETS_SQL = `select id, chain, address, label, created_at from (
   union all select id, 'btc'::text, address, label, created_at from btc_wallets where deleted_at is null
   union all select id, 'ada'::text, address, label, created_at from ada_wallets where deleted_at is null
   union all select id, 'algo'::text, address, label, created_at from algo_wallets where deleted_at is null
-  union all select id, 'zec'::text, address, label, created_at from zec_wallets where deleted_at is null) w order by created_at`;
-const GECKO: Record<PriceCoin, string> = { xrp: 'ripple', eth: 'ethereum', btc: 'bitcoin', ada: 'cardano', algo: 'algorand', zec: 'zcash', qnt: 'quant-network', fet: 'fetch-ai' };
+  union all select id, 'zec'::text, address, label, created_at from zec_wallets where deleted_at is null
+  union all select id, 'atom'::text, address, label, created_at from atom_wallets where deleted_at is null) w order by created_at`;
+const GECKO: Record<PriceCoin, string> = { xrp: 'ripple', eth: 'ethereum', btc: 'bitcoin', ada: 'cardano', algo: 'algorand', zec: 'zcash', atom: 'cosmos', qnt: 'quant-network', fet: 'fetch-ai' };
 
-const KRAKEN_PAIR: Record<PriceCoin, string> = { btc: 'XBT', eth: 'ETH', xrp: 'XRP', ada: 'ADA', algo: 'ALGO', zec: 'ZEC', qnt: 'QNT', fet: 'FET' };
+const KRAKEN_PAIR: Record<PriceCoin, string> = { btc: 'XBT', eth: 'ETH', xrp: 'XRP', ada: 'ADA', algo: 'ALGO', zec: 'ZEC', atom: 'ATOM', qnt: 'QNT', fet: 'FET' };
 const PRICE_TTL = 20; // Sekunden – „quasi Echtzeit“; Kraken erlaubt ~1 Abfrage/s je IP
 
 /**
@@ -116,10 +118,10 @@ const PRICE_TTL = 20; // Sekunden – „quasi Echtzeit“; Kraken erlaubt ~1 Ab
  * letzter Handelspreis in EUR und USD, dazu die 24-h-Veränderung aus Stundenkerzen.
  * Ausweich: CoinGecko (Durchschnitt mehrerer Börsen, inkl. 24-h-Änderung). AED über die USD-Bindung.
  */
-export async function coinPrices(coins: readonly PriceCoin[] = ['xrp', 'eth', 'btc', 'ada', 'algo', 'zec', 'qnt', 'fet']): Promise<Partial<Record<PriceCoin, Price>>> {
+export async function coinPrices(coins: readonly PriceCoin[] = ['xrp', 'eth', 'btc', 'ada', 'algo', 'zec', 'atom', 'qnt', 'fet']): Promise<Partial<Record<PriceCoin, Price>>> {
   if (fake()) {
     const t = (eur: number, usd: number, change24h: number) => ({ eur, usd, aed: usd * AED_PER_USD, source: 'Test', at: new Date(), change24h });
-    return { xrp: t(2, 2.2, 0.1), eth: t(3000, 3300, -0.02), btc: t(90000, 100000, 0.01), ada: t(0.6, 0.7, 0), algo: t(0.2, 0.22, 0.05), zec: t(40, 44, 0.02), qnt: t(80, 90, -0.03), fet: t(0.5, 0.55, 0.01) };
+    return { xrp: t(2, 2.2, 0.1), eth: t(3000, 3300, -0.02), btc: t(90000, 100000, 0.01), ada: t(0.6, 0.7, 0), algo: t(0.2, 0.22, 0.05), zec: t(40, 44, 0.02), atom: t(4, 4.4, -0.01), qnt: t(80, 90, -0.03), fet: t(0.5, 0.55, 0.01) };
   }
   const out: Partial<Record<PriceCoin, Price>> = {};
   if (!coins.length) return out;
@@ -350,5 +352,39 @@ export async function loadZecAccount(address: string): Promise<ZecAccount> {
       try { const a = await zecBlockbook(base, address); if (a) return a; } catch (e) { console.error('[zec]', base, (e as Error).message); }
     }
     return { address, zec: NaN, pendingZec: 0, txCount: 0, moves: [], error: 'Zcash-Netz gerade nicht erreichbar.' };
+  });
+}
+
+// ---------- Cosmos Hub (ATOM) ----------
+export interface AtomAccount { address: string; atom: number; liquid: number; staked: number; unbonding: number; rewards: number; validators: number; error?: string }
+const COSMOS_REST = ['https://cosmos-rest.publicnode.com', 'https://rest.cosmos.directory/cosmoshub', 'https://cosmos-api.polkachu.com'];
+
+async function cosmosGet<T>(base: string, path: string): Promise<T> {
+  const r = await fetch(`${base}${path}`, { headers: { accept: 'application/json' }, next: { revalidate: 120 }, signal: AbortSignal.timeout(7000) });
+  if (!r.ok) throw new Error(`HTTP ${r.status}`);
+  return (await r.json()) as T;
+}
+const uatom = (xs: Array<{ denom: string; amount: string }> | undefined) => (xs ?? []).filter((c) => c.denom === 'uatom').reduce((n, c) => n + Number(c.amount), 0) / UATOM_PER_ATOM;
+
+/** Gesamt = frei + gestaked + in Entsperrung + offene Staking-Belohnungen. */
+export async function loadAtomAccount(address: string): Promise<AtomAccount> {
+  if (fake()) return { address, atom: 120, liquid: 20, staked: 95, unbonding: 0, rewards: 5, validators: 1 };
+  return cached(`atom:${address}`, 120_000, async () => {
+    for (const base of COSMOS_REST) {
+      try {
+        const [bal, del, unb, rew] = await Promise.all([
+          cosmosGet<{ balances?: Array<{ denom: string; amount: string }> }>(base, `/cosmos/bank/v1beta1/balances/${address}`),
+          cosmosGet<{ delegation_responses?: Array<{ balance?: { denom: string; amount: string } }> }>(base, `/cosmos/staking/v1beta1/delegations/${address}`),
+          cosmosGet<{ unbonding_responses?: Array<{ entries?: Array<{ balance: string }> }> }>(base, `/cosmos/staking/v1beta1/delegators/${address}/unbonding_delegations`).catch(() => ({ unbonding_responses: [] })),
+          cosmosGet<{ total?: Array<{ denom: string; amount: string }> }>(base, `/cosmos/distribution/v1beta1/delegators/${address}/rewards`).catch(() => ({ total: [] })),
+        ]);
+        const liquid = uatom(bal.balances);
+        const staked = (del.delegation_responses ?? []).reduce((n, d) => n + (d.balance?.denom === 'uatom' ? Number(d.balance.amount) : 0), 0) / UATOM_PER_ATOM;
+        const unbonding = (unb.unbonding_responses ?? []).flatMap((u) => u.entries ?? []).reduce((n, e) => n + Number(e.balance), 0) / UATOM_PER_ATOM;
+        const rewards = uatom(rew.total);
+        return { address, atom: liquid + staked + unbonding + rewards, liquid, staked, unbonding, rewards, validators: (del.delegation_responses ?? []).length };
+      } catch (e) { console.error('[atom]', base, (e as Error).message); }
+    }
+    return { address, atom: NaN, liquid: 0, staked: 0, unbonding: 0, rewards: 0, validators: 0, error: 'Cosmos-Netz gerade nicht erreichbar.' };
   });
 }
