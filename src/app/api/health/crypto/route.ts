@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { coinPrices, ethTokenSymbol, loadAdaAccount, loadAlgoAccount, loadBtcAccount, loadEthAccount, loadXrpAccount, loadZecAccount, loadAtomAccount } from '@/server/wallets';
+import { coinPrices, ethTokenSymbol, loadAdaAccount, loadAlgoAccount, loadBtcAccount, loadEthAccount, loadXrpAccount, loadZecAccount, loadAtomAccount, loadXlmAccount } from '@/server/wallets';
 import { ETH_TOKENS } from '@/lib/crypto/eth';
 import { goldPrice } from '@/server/networth';
 
@@ -8,13 +8,15 @@ export const dynamic = 'force-dynamic';
 /** Betriebscheck: XRP Ledger + Kurs erreichbar? Prüft nur ein bekanntes öffentliches Konto (Genesis), keine Nutzerdaten. */
 export async function GET() {
   // Öffentliche Referenzkonten: XRP-Genesis, Ethereum-Stiftung (bekannt, öffentlich)
-  const [acc, eth, btc, prices, gold, ada, algo, zec, atom] = await Promise.all([loadXrpAccount('rHb9CJAWyB4rj91VRWn96DkukG4bwdtyTh'), loadEthAccount('0xde0B295669a9FD93d5F28D9Ec85E40f4cb697BAe'), loadBtcAccount('1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa'), coinPrices(['xrp', 'eth', 'btc', 'ada', 'algo', 'zec', 'atom', 'qnt', 'fet']), goldPrice(),
+  const [acc, eth, btc, prices, gold, ada, algo, zec, atom, xlm] = await Promise.all([loadXrpAccount('rHb9CJAWyB4rj91VRWn96DkukG4bwdtyTh'), loadEthAccount('0xde0B295669a9FD93d5F28D9Ec85E40f4cb697BAe'), loadBtcAccount('1A1zP1eP5QGefi2DMPTfTL5SLmv7DivfNa'), coinPrices(['xrp', 'eth', 'btc', 'ada', 'algo', 'zec', 'atom', 'xlm', 'qnt', 'fet']), goldPrice(),
     loadAdaAccount('addr1qx2fxv2umyhttkxyxp8x0dlpdt3k6cwng5pxj3jhsydzer3n0d3vllmyqwsx5wktcd8cc3sq835lu7drv2xwl2wywfgse35a3x'),
     loadAlgoAccount('AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAY5HFKQ'),
     // Zcash: Adresse der Zcash-Gründer-Belohnung (öffentlich, viele Bewegungen)
     loadZecAccount('t3Vz22vK5z2LcKEdg16Yv4FFneEL1zg9ojd'),
     // Cosmos: Community-Pool-/Distributionsmodul (öffentlich)
-    loadAtomAccount('cosmos1jv65s3grqf6v6jl3dp4t6c9t9rk99cd88lyufl')]);
+    loadAtomAccount('cosmos1jv65s3grqf6v6jl3dp4t6c9t9rk99cd88lyufl'),
+    // Stellar: Circle-USDC-Herausgeber (öffentlich)
+    loadXlmAccount('GA5ZSEJYB37JRC5AVCIA5MOP4RHTM335X2KGX3IHOJAPP5RE34K4KZVN')]);
   // Token-Verträge gegenprüfen: liefert der Vertrag das erwartete Symbol?
   const tokenCheck = Object.fromEntries(await Promise.all(ETH_TOKENS.map(async (t) => [t.symbol, (await ethTokenSymbol(t.contract)) === t.symbol] as const)));
   return NextResponse.json({
@@ -24,9 +26,10 @@ export async function GET() {
     btc: btc.error ? { ok: false, fehler: btc.error } : { ok: true, bewegungen: btc.moves.length },
     ada: ada.error ? { ok: false, fehler: ada.error } : { ok: true, ganzesKonto: ada.whole },
     algo: algo.error ? { ok: false, fehler: algo.error } : { ok: true },
+    xlm: xlm.error ? { ok: false, fehler: xlm.error } : { ok: true, aktiviert: xlm.activated },
     atom: atom.error ? { ok: false, fehler: atom.error } : { ok: true },
     zec: zec.error ? { ok: false, fehler: zec.error } : { ok: true, quelle: zec.source, bewegungen: zec.moves.length },
-    kurs: Object.fromEntries((['xrp', 'eth', 'btc', 'ada', 'algo', 'zec', 'atom', 'qnt', 'fet'] as const).map((c) => [c, prices[c] ? { quelle: prices[c]!.source, h24: prices[c]!.change24h != null } : false])),
+    kurs: Object.fromEntries((['xrp', 'eth', 'btc', 'ada', 'algo', 'zec', 'atom', 'xlm', 'qnt', 'fet'] as const).map((c) => [c, prices[c] ? { quelle: prices[c]!.source, h24: prices[c]!.change24h != null } : false])),
     gold: gold ? { ok: true, quelle: gold.source } : { ok: false },
   }, { headers: { 'Cache-Control': 'no-store' } });
 }

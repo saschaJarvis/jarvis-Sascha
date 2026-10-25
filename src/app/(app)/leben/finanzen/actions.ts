@@ -11,6 +11,7 @@ import { adaAddressHint, isAdaAddress } from '@/lib/crypto/ada';
 import { algoAddressHint, isAlgoAddress } from '@/lib/crypto/algo';
 import { isZecAddress, zecAddressHint } from '@/lib/crypto/zec';
 import { atomAddressHint, isAtomAddress } from '@/lib/crypto/atom';
+import { isXlmAddress, xlmAddressHint } from '@/lib/crypto/xlm';
 import { CURRENCIES, parseAmount } from '@/lib/domain/networth';
 
 export type WalletState = { error?: string; ok?: string } | undefined;
@@ -21,9 +22,12 @@ export async function addWalletAction(_: WalletState, fd: FormData): Promise<Wal
   const raw = String(fd.get('address') ?? '').trim();
   let label = String(fd.get('label') ?? '').trim().slice(0, 40);
   const SECRET = '⚠️ Das sieht nach einer geheimen Wiederherstellungsphrase oder einem privaten Schlüssel aus. Es wurde NICHT gespeichert. Jarvis braucht nur die öffentliche Adresse. Gib deine 24 Wörter oder Schlüssel niemals irgendwo ein.';
-  if (raw.split(/\s+/).length >= 12 || /^s[1-9A-HJ-NP-Za-km-z]{25,}$/.test(raw) || /^(0x)?[0-9a-fA-F]{64}$/.test(raw) || /^[xyzt]prv/i.test(raw) || /^[5KL][1-9A-HJ-NP-Za-km-z]{50,51}$/.test(raw)) return { error: SECRET };
-  let chain: 'xrp' | 'eth' | 'btc' | 'ada' | 'algo' | 'zec' | 'atom';
-  if (/^cosmos/i.test(raw)) {
+  if (raw.split(/\s+/).length >= 12 || /^s[1-9A-HJ-NP-Za-km-z]{25,}$/.test(raw) || /^(0x)?[0-9a-fA-F]{64}$/.test(raw) || /^[xyzt]prv/i.test(raw) || /^[5KL][1-9A-HJ-NP-Za-km-z]{50,51}$/.test(raw) || /^S[A-Z2-7]{55}$/.test(raw)) return { error: SECRET };
+  let chain: 'xrp' | 'eth' | 'btc' | 'ada' | 'algo' | 'zec' | 'atom' | 'xlm';
+  if (/^[GM][A-Z2-7]{55}([A-Z2-7]{13})?$/.test(raw)) {
+    if (!isXlmAddress(raw)) return { error: xlmAddressHint(raw) ?? 'Keine gültige Stellar-Adresse (beginnt mit G, 56 Zeichen).' };
+    chain = 'xlm';
+  } else if (/^cosmos/i.test(raw)) {
     if (!isAtomAddress(raw)) return { error: atomAddressHint(raw) ?? 'Keine gültige Cosmos-Adresse (beginnt mit cosmos1).' };
     chain = 'atom';
   } else if (/^t[13][1-9A-HJ-NP-Za-km-z]{30,36}$/.test(raw) || /^(zs1|zc[1-9A-HJ-NP-Za-km-z]|u1[02-9ac-hj-np-z]{40,})/.test(raw)) {
@@ -42,7 +46,7 @@ export async function addWalletAction(_: WalletState, fd: FormData): Promise<Wal
     if (!isEthAddress(raw)) return { error: ethAddressHint(raw) ?? 'Keine gültige Ethereum-Adresse (0x + 40 Zeichen).' };
     chain = 'eth';
   } else {
-    if (!isXrpAddress(raw)) return { error: addressHint(raw) ?? 'Keine gültige Adresse. Bitcoin beginnt mit 1, 3 oder bc1, Ethereum mit 0x, XRP mit r, Cardano mit addr1, Zcash mit t1, Cosmos mit cosmos1, Algorand hat 58 Großbuchstaben/Ziffern.' };
+    if (!isXrpAddress(raw)) return { error: addressHint(raw) ?? 'Keine gültige Adresse. Bitcoin beginnt mit 1, 3 oder bc1, Ethereum mit 0x, XRP mit r, Cardano mit addr1, Zcash mit t1, Cosmos mit cosmos1, Stellar mit G (56 Zeichen), Algorand hat 58 Großbuchstaben/Ziffern.' };
     chain = 'xrp';
   }
   if (!label || label === 'Ledger') label = `Ledger ${chain.toUpperCase()}`;
@@ -59,10 +63,12 @@ export async function addWalletAction(_: WalletState, fd: FormData): Promise<Wal
       ? q('insert into zec_wallets (user_id, address, label) values (auth.uid(), $1, $2)', [raw, label])
       : chain === 'atom'
       ? q('insert into atom_wallets (user_id, address, label) values (auth.uid(), $1, $2)', [raw, label])
+      : chain === 'xlm'
+      ? q('insert into xlm_wallets (user_id, address, label) values (auth.uid(), $1, $2)', [raw, label])
       : q('insert into crypto_wallets (user_id, chain, address, label) values (auth.uid(), $1, $2, $3)', [chain, raw, label]));
   } catch (e) {
     const m = e instanceof Error ? e.message : '';
-    if (/(crypto|eth|btc|ada|algo|zec|atom)_wallets_unique/.test(m)) return { error: 'Diese Adresse ist schon eingetragen.' };
+    if (/(crypto|eth|btc|ada|algo|zec|atom|xlm)_wallets_unique/.test(m)) return { error: 'Diese Adresse ist schon eingetragen.' };
     if (/Höchstens 20/.test(m)) return { error: 'Höchstens 20 Wallets – bitte erst eines entfernen.' };
     return { error: friendlyDbError(e) };
   }
@@ -81,6 +87,7 @@ export async function removeWalletAction(fd: FormData): Promise<void> {
     await q('update algo_wallets set deleted_at = now() where id = $1 and deleted_at is null', [id]);
     await q('update zec_wallets set deleted_at = now() where id = $1 and deleted_at is null', [id]);
     await q('update atom_wallets set deleted_at = now() where id = $1 and deleted_at is null', [id]);
+    await q('update xlm_wallets set deleted_at = now() where id = $1 and deleted_at is null', [id]);
   });
   revalidatePath('/', 'layout');
 }
