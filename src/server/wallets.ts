@@ -123,7 +123,7 @@ const GECKO: Record<PriceCoin, string> = { xrp: 'ripple', eth: 'ethereum', btc: 
 
 // null = nicht bei Kraken gelistet → direkt CoinGecko (eine unbekannte Kraken-Paarung würde die ganze Abfrage scheitern lassen)
 const KRAKEN_PAIR: Record<PriceCoin, string | null> = { btc: 'XBT', eth: 'ETH', xrp: 'XRP', ada: 'ADA', algo: 'ALGO', zec: 'ZEC', atom: 'ATOM', xlm: 'XLM', ltc: 'LTC', dot: 'DOT', vet: 'VET', sol: 'SOL', qnt: 'QNT', fet: 'FET', link: 'LINK', render: 'RENDER', gala: 'GALA', hbar: 'HBAR', cspr: null, fil: 'FIL', best: null, iota: null, avax: 'AVAX', trx: 'TRX' };
-const PRICE_TTL = 20; // Sekunden – „quasi Echtzeit“; Kraken erlaubt ~1 Abfrage/s je IP
+const PRICE_TTL = 10; // Sekunden – „quasi Echtzeit“; eine Ticker-Abfrage für alle Coins, Kraken erlaubt ~1 Abfrage/s je IP
 
 /**
  * Kurse fast in Echtzeit von Kraken (regulierte Börse, öffentlicher Kurs-Feed, ohne Schlüssel):

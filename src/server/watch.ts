@@ -9,7 +9,7 @@ import { getFx } from './ext';
 import { dispatchAlerts, queueAlert } from './notify';
 
 /**
- * Wächter (alle 5 Minuten über /api/cron/watch):
+ * Wächter (jede Minute über /api/cron/watch; Wallet-Abrufe sind 2–5 Min. zwischengespeichert, Kurse 10 s):
  *  - Abfluss: Bestand einer Wallet sinkt → sofort, kritisch (auch in der Ruhezeit).
  *  - Eingang: Bestand steigt um mindestens 25 € Gegenwert.
  *  - Kurs: eigener Krypto-Bestand bewegt sich seit Tagesbeginn (Dubai) um ≥ Schwelle (Standard 10 %) – nur Kurse,

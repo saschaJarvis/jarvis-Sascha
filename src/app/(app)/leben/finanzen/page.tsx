@@ -46,7 +46,7 @@ export default async function FinancePage() {
   return (
     <div>
       <PageTitle back={{ href: '/leben', label: 'Leben' }} title="Finanzen" />
-      <AutoRefresh seconds={30} />
+      <AutoRefresh seconds={10} />
 
       <NetWorthCard nw={nw} />
 

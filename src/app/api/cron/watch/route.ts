@@ -5,7 +5,7 @@ import { runWatch } from '@/server/watch';
 export const dynamic = 'force-dynamic';
 export const maxDuration = 120;
 
-/** Wächter-Lauf (alle 5 Minuten von Supabase pg_cron aufgerufen). Nur mit geheimem Schlüssel. */
+/** Wächter-Lauf (jede Minute von Supabase pg_cron aufgerufen). Nur mit geheimem Schlüssel. */
 async function handle(req: NextRequest) {
   const secret = process.env.CRON_SECRET ?? '';
   const got = (req.headers.get('authorization') ?? '').replace(/^Bearer\s+/i, '');

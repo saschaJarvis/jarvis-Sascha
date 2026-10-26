@@ -286,7 +286,7 @@ export default async function BridgePage() {
           <Panel n="04" title="Finanzen" href="/leben/finanzen" aside={fx ? `1 € = ${fx.eurAed.toLocaleString('de-DE', { minimumFractionDigits: 3, maximumFractionDigits: 3 })} AED` : 'Kurs fehlt'}>
             <NetWorthBlock nw={nw} compact />
             <div className="mt-3"><StatementLine rows={statements} /></div>
-            <AutoRefresh seconds={60} />
+            <AutoRefresh seconds={20} />
           </Panel>
 
           <Panel n="05" title="Dubai" href="/leben/dubai" aside={daysToMove !== null ? `T – ${daysToMove}` : 'Umzugsdatum offen'}>
