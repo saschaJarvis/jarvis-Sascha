@@ -1,7 +1,7 @@
 import 'server-only';
 import { db } from './repo';
 import type { Session } from './auth';
-import { getFx } from './ext';
+import { getFx, type Fx } from './ext';
 import { coinPrices, loadAdaAccount, loadAlgoAccount, loadBtcAccount, loadEthAccount, loadXrpAccount, loadZecAccount, loadAtomAccount, loadXlmAccount, loadLtcAccount, loadDotAccount, loadVetAccount, loadSolAccount, WALLETS_SQL, MANUAL_SQL, MANUAL_SYMBOLS, type ManualRow, type Coin, type PriceCoin } from './wallets';
 import { goldValueUsd, sumParts, toAed, AED_PER_USD } from '@/lib/domain/networth';
 import { portfolioChange } from '@/lib/domain/change';
@@ -44,6 +44,7 @@ export interface StockRow { id: string; symbol: string; name: string | null; isi
 
 export interface NetWorth {
   eurAed: number | null;
+  fx: Fx | null;                         // Kursquelle für die Anzeige (live oder EZB)
   totalAed: number;
   totalEur: number | null;
   missing: number;                       // Posten ohne Kurs (nicht mitgezählt)
@@ -179,7 +180,7 @@ export async function loadNetWorth(s: Session): Promise<NetWorth> {
   const total = sumParts([acc.aed, crypto.aed, gold.aed, plat.aed, silv.aed, stocks.aed]);
   const missing = acc.missing + gold.missing + crypto.missing + plat.missing + silv.missing + stocks.missing;
   return {
-    eurAed, totalAed: total.aed, totalEur: eurAed ? total.aed / eurAed : null, missing,
+    eurAed, fx: fx ?? null, totalAed: total.aed, totalEur: eurAed ? total.aed / eurAed : null, missing,
     accounts: { aed: acc.aed, count: accRows.length, rows: accRows },
     crypto: {
       aed: crypto.aed, count: rows.wallets.length + rows.manual.length, holdings, error: crypto.missing > 0, coins, asOf: new Date(),

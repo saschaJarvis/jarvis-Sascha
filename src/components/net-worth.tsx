@@ -18,6 +18,7 @@ export function NetWorthBlock({ nw, compact = false }: { nw: NetWorth; compact?:
 
   return (
     <div className="grid gap-3">
+      <FxLine fx={nw.fx} />
       <div>
         <p className="mono text-[.65rem] uppercase tracking-[.18em] text-muted">Gesamtvermögen</p>
         <p className={`hud-num ${compact ? 'text-3xl' : 'text-4xl'} font-semibold leading-tight text-sea glow`}>{empty ? '—' : `${nf(nw.totalAed)} AED`}</p>
@@ -55,7 +56,30 @@ export function NetWorthCard({ nw }: { nw: NetWorth }) {
   return (
     <div className="card mb-5">
       <NetWorthBlock nw={nw} />
-      <p className="mt-3 text-xs text-muted">In AED gerechnet (USD fest 3,6725; EUR nach EZB-Kurs). Wohnung und Hypothek sind nicht enthalten. <Link href="/leben/dubai" className="underline">Wohnung</Link></p>
+      <p className="mt-3 text-xs text-muted">In AED gerechnet (USD fest 3,6725; EUR live nach Kraken, sonst EZB-Kurs). Wohnung und Hypothek sind nicht enthalten. <Link href="/leben/dubai" className="underline">Wohnung</Link></p>
+    </div>
+  );
+}
+
+/** „1 € = 4,2871 AED ▲ +0,12 % · LIVE · 04:52:10“ – ganz oben beim Gesamtvermögen. */
+function FxLine({ fx }: { fx: NetWorth['fx'] }) {
+  if (!fx) return <p className="mono text-xs text-warn">€/AED-Kurs gerade nicht abrufbar</p>;
+  const up = (fx.changePct ?? 0) > 0, down = (fx.changePct ?? 0) < 0;
+  return (
+    <div className="flex flex-wrap items-baseline gap-x-2 gap-y-0.5 border-b border-line pb-2">
+      <span className="mono text-[.62rem] uppercase tracking-[.16em] text-muted">€ / AED</span>
+      <span className="hud-num text-lg font-semibold">1 € = {nf(fx.eurAed, 4)} AED</span>
+      {fx.changePct != null && (
+        <span className={`hud-num text-sm ${up ? 'text-good' : down ? 'text-bad' : 'text-muted'}`}>
+          {up ? '▲' : down ? '▼' : '■'} {sign(fx.changePct)}{nf(Math.abs(fx.changePct) * 100, 2)} %
+        </span>
+      )}
+      {fx.live
+        ? <span className="mono text-[.6rem] uppercase tracking-[.16em] text-good">● live</span>
+        : <span className="mono text-[.6rem] uppercase tracking-[.16em] text-warn">EZB {fx.date}</span>}
+      <span className="mono text-[.6rem] text-muted" suppressHydrationWarning>
+        Stand {new Date(fx.at).toLocaleTimeString('de-DE', { timeZone: 'Asia/Dubai', hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+      </span>
     </div>
   );
 }
