@@ -103,6 +103,6 @@ export function Shell({ children }: { children: React.ReactNode }) {
   const path = usePathname();
   const wide = path === '/';
   return (
-    <main className={`mx-auto px-4 pb-28 pt-5 xl:pb-10 ${wide ? 'max-w-[1800px]' : 'max-w-3xl'}`}>{children}</main>
+    <main className={`mx-auto px-4 pb-40 pt-5 xl:pb-28 ${wide ? 'max-w-[1800px]' : 'max-w-3xl'}`}>{children}</main>
   );
 }

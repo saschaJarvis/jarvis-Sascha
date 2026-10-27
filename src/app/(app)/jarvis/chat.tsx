@@ -1,21 +1,26 @@
 'use client';
 import Link from 'next/link';
 import { useEffect, useRef, useState, useTransition } from 'react';
+import { primeSpeech, speak, stopSpeaking, useDictation } from '@/components/voice';
 import { askJarvisAction } from './chat-actions';
 
 interface Turn { role: 'user' | 'assistant'; text: string; proposals?: string[]; error?: boolean }
 
 const STARTERS = ['Was ist diese Woche wirklich wichtig?', 'Was muss ich vor der Abmeldung in Mainz erledigen?', 'Welche Unterlagen fehlen mir für Dubai?'];
 
-export function JarvisChat({ consented }: { consented: boolean }) {
+export function JarvisChat({ consented, listenSignal = 0, id = 'ask' }: { consented: boolean; listenSignal?: number; id?: string }) {
   const [turns, setTurns] = useState<Turn[]>([]);
   const [text, setText] = useState('');
   const [consent, setConsent] = useState(consented);
   const [pending, start] = useTransition();
   const endRef = useRef<HTMLDivElement>(null);
   useEffect(() => { endRef.current?.scrollIntoView({ behavior: 'smooth', block: 'nearest' }); }, [turns, pending]);
+  const [voiceReply, setVoiceReply] = useState(false); // Antworten vorlesen, wenn per Sprache gefragt
+  const dict = useDictation((partial) => setText(partial), (final) => { setVoiceReply(true); send(final, true); });
+  // Signal von außen (Jarvis-Knopf): sofort zuhören
+  useEffect(() => { if (listenSignal > 0 && consent && dict.supported) dict.start(); }, [listenSignal]); // eslint-disable-line react-hooks/exhaustive-deps
 
-  const send = (q: string) => {
+  const send = (q: string, byVoice = false) => {
     const question = q.trim();
     if (!question || pending) return;
     const history = turns.filter((t) => !t.error).map(({ role, text: t }) => ({ role, text: t }));
@@ -24,6 +29,7 @@ export function JarvisChat({ consented }: { consented: boolean }) {
     start(async () => {
       const r = await askJarvisAction({ question, history, consent });
       setTurns((x) => [...x, r.error ? { role: 'assistant', text: r.error, error: true } : { role: 'assistant', text: r.answer ?? '', proposals: r.proposals }]);
+      if (byVoice || voiceReply) speak(r.error ?? r.answer ?? '');
       if (!r.error) setConsent(true);
     });
   };
@@ -56,11 +62,27 @@ export function JarvisChat({ consented }: { consented: boolean }) {
         </label>
       )}
       <form onSubmit={(e) => { e.preventDefault(); send(text); }} className="grid gap-2">
-        <label htmlFor="ask" className="sr-only">Deine Frage</label>
-        <textarea id="ask" rows={2} maxLength={2000} value={text} onChange={(e) => setText(e.target.value)} className="field resize-none"
+        <label htmlFor={id} className="sr-only">Deine Frage</label>
+        <textarea id={id} rows={2} maxLength={2000} value={text} onChange={(e) => setText(e.target.value)} className="field resize-none"
           placeholder="Frag mich alles zu deinen Aufgaben, Verträgen, Dokumenten …"
           onKeyDown={(e) => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); send(text); } }} />
-        <button type="submit" className="btn btn-primary" disabled={!consent || pending || !text.trim()}>Senden</button>
+        <div className="flex gap-2">
+          {dict.supported && (
+            <button type="button" onClick={() => { stopSpeaking(); if (dict.listening) dict.stop(); else dict.start(); }} disabled={!consent || pending}
+              aria-pressed={dict.listening} aria-label={dict.listening ? 'Zuhören beenden' : 'Sprechen'}
+              className={`btn ${dict.listening ? 'btn-primary voice-live' : 'btn-secondary'} shrink-0 px-4`}>
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" aria-hidden="true"><path d="M12 3a3 3 0 0 1 3 3v6a3 3 0 0 1-6 0V6a3 3 0 0 1 3-3Zm-6 9a6 6 0 0 0 12 0M12 18v3" /></svg>
+              <span className="ml-1.5">{dict.listening ? 'Hört zu …' : 'Sprechen'}</span>
+            </button>
+          )}
+          <button type="submit" className="btn btn-primary flex-1" disabled={!consent || pending || !text.trim()}>Senden</button>
+          <button type="button" onClick={() => { setVoiceReply((v) => { if (v) stopSpeaking(); else primeSpeech(); return !v; }); }} aria-pressed={voiceReply}
+            aria-label={voiceReply ? 'Vorlesen aus' : 'Antworten vorlesen'} title={voiceReply ? 'Vorlesen aus' : 'Antworten vorlesen'}
+            className={`btn ${voiceReply ? 'btn-primary' : 'btn-secondary'} shrink-0 px-3`}>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M4 9v6h4l5 4V5L8 9H4Z" />{voiceReply ? <path d="M16.5 8.5a5 5 0 0 1 0 7M19 6a8.5 8.5 0 0 1 0 12" /> : <path d="m17 9 5 6m0-6-5 6" />}</svg>
+          </button>
+        </div>
+        {dict.error && <p className="text-sm text-warn">{dict.error}</p>}
       </form>
       <p className="text-xs text-muted">Antworten beruhen nur auf deinen Jarvis-Daten. Vorschläge landen im Eingang – nichts passiert ohne dich.</p>
     </section>
