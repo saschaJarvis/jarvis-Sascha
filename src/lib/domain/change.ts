@@ -35,3 +35,27 @@ export function portfolioChange(items: Holding[]): { abs: number; pct: number | 
   }
   return { abs, pct: before > 0 ? abs / before : null, complete };
 }
+
+/**
+ * 24-h-Verlauf als Faktoren relativ zu jetzt: f[i] = Kurs(jetzt − (n−1−i) h) / Kurs jetzt, letzter Wert = 1.
+ * Fehlende Stunden übernehmen den vorherigen Wert. null = kein brauchbarer Verlauf.
+ */
+export function hourlyFactors(ts: number[], closes: Array<number | null>, now: number, nowSec: number, points = 25): number[] | null {
+  if (!(now > 0) || !ts.length) return null;
+  const out: Array<number | null> = [];
+  for (let i = 0; i < points; i++) {
+    const v = i === points - 1 ? now : closeAt(ts, closes, nowSec - (points - 1 - i) * 3600);
+    out.push(v && v > 0 ? v / now : null);
+  }
+  const firstOk = out.findIndex((x) => x != null);
+  if (firstOk < 0 || firstOk > points / 2) return null;
+  let last = out[firstOk]!;
+  return out.map((x) => (x == null ? last : (last = x)));
+}
+
+/** Wertverlauf eines Bestands: Σ Wert jetzt × Faktor. Posten ohne Verlauf zählen konstant. */
+export function valueSeries(items: Array<{ valueNow: number; factors: number[] | null }>, points = 25): number[] {
+  const s = new Array<number>(points).fill(0);
+  for (const it of items) for (let i = 0; i < points; i++) s[i] += it.valueNow * (it.factors?.[i] ?? 1);
+  return s;
+}

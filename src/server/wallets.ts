@@ -12,7 +12,7 @@ import { decodeAccountInfo, dotPublicKey, PLANCK_PER_DOT, systemAccountKey } fro
 import { blockbookLoad, type BbAccount } from './blockbook';
 import { LOVELACE_PER_ADA, stakeAddressOf } from '@/lib/crypto/ada';
 import { ALGO_STABLES, MICRO_PER_ALGO } from '@/lib/crypto/algo';
-import { priceAgo, relChange } from '@/lib/domain/change';
+import { hourlyFactors, priceAgo, relChange } from '@/lib/domain/change';
 import { AED_PER_USD } from './ext';
 
 /**
@@ -32,7 +32,7 @@ export interface XrpAccount {
   moves: XrpMove[];
   error?: string;
 }
-export interface Price { eur: number; usd: number; aed: number; source: string; at: Date; change24h: number | null } // change24h: relativ, z. B. 0,023
+export interface Price { eur: number; usd: number; aed: number; source: string; at: Date; change24h: number | null; spark?: number[] | null } // spark: 24-h-Verlauf, Faktoren relativ zu jetzt (hourlyFactors) // change24h: relativ, z. B. 0,023
 
 const cache = new Map<string, { at: number; v: unknown }>();
 async function cached<T>(key: string, ttlMs: number, fn: () => Promise<T>): Promise<T> {
@@ -132,7 +132,8 @@ const PRICE_TTL = 10; // Sekunden – „quasi Echtzeit“; eine Ticker-Abfrage 
  */
 export async function coinPrices(coins: readonly PriceCoin[] = ['xrp', 'eth', 'btc', 'ada', 'algo', 'zec', 'atom', 'xlm', 'ltc', 'dot', 'vet', 'sol', 'qnt', 'fet', 'link', 'render', 'gala', 'hbar', 'cspr', 'fil', 'best', 'iota', 'avax', 'trx']): Promise<Partial<Record<PriceCoin, Price>>> {
   if (fake()) {
-    const t = (eur: number, usd: number, change24h: number) => ({ eur, usd, aed: usd * AED_PER_USD, source: 'Test', at: new Date(), change24h });
+    const t = (eur: number, usd: number, change24h: number) => ({ eur, usd, aed: usd * AED_PER_USD, source: 'Test', at: new Date(), change24h,
+      spark: Array.from({ length: 25 }, (_, i) => 1 / (1 + change24h * (1 - i / 24)) * (1 + 0.006 * Math.sin(i * 1.3 + eur))) });
     return { xrp: t(2, 2.2, 0.1), eth: t(3000, 3300, -0.02), btc: t(90000, 100000, 0.01), ada: t(0.6, 0.7, 0), algo: t(0.2, 0.22, 0.05), zec: t(40, 44, 0.02), atom: t(4, 4.4, -0.01), xlm: t(0.3, 0.33, 0.01), ltc: t(80, 88, 0.01), dot: t(4, 4.4, 0.02), vet: t(0.006, 0.0067, 0.01), sol: t(90, 100, 0.01), qnt: t(80, 90, -0.03), fet: t(0.5, 0.55, 0.01), link: t(10, 11, 0.01), render: t(1.5, 1.7, 0.01), gala: t(0.0016, 0.0018, 0.01), hbar: t(0.15, 0.17, 0.01), cspr: t(0.002, 0.0022, 0.01), fil: t(2, 2.2, 0.01), best: t(0.47, 0.52, 0), iota: t(0.038, 0.043, 0.01), avax: t(20, 22, 0.01), trx: t(0.27, 0.3, 0.01) };
   }
   const out: Partial<Record<PriceCoin, Price>> = {};
@@ -155,13 +156,18 @@ export async function coinPrices(coins: readonly PriceCoin[] = ['xrp', 'eth', 'b
       const eur = find(c, 'EUR'), usd = find(c, 'USD');
       if (!eur || !usd) return;
       let change24h: number | null = null;
+      let spark: number[] | null = null;
       try {
         const o = await fetch(`https://api.kraken.com/0/public/OHLC?pair=${eur.key}&interval=60`, { next: { revalidate: 300 }, signal: AbortSignal.timeout(4000) });
         const oj = (await o.json()) as { result?: Record<string, unknown> };
         const candles = Object.entries(oj.result ?? {}).find(([k]) => k !== 'last')?.[1] as Array<[number, string, string, string, string]> | undefined;
-        if (candles) change24h = relChange(eur.v, priceAgo(candles, Math.floor(Date.now() / 1000)));
+        if (candles) {
+          const nowSec = Math.floor(Date.now() / 1000);
+          change24h = relChange(eur.v, priceAgo(candles, nowSec));
+          spark = hourlyFactors(candles.map((c) => c[0]), candles.map((c) => Number(c[4])), eur.v, nowSec);
+        }
       } catch { /* ohne 24-h-Änderung */ }
-      out[c] = { eur: eur.v, usd: usd.v, aed: usd.v * AED_PER_USD, source: 'Kraken', at: new Date(), change24h };
+      out[c] = { eur: eur.v, usd: usd.v, aed: usd.v * AED_PER_USD, source: 'Kraken', at: new Date(), change24h, spark };
     }));
   } catch (e) { console.error('[kurs] kraken', (e as Error).message); }
 

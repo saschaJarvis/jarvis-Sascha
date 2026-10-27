@@ -6,7 +6,7 @@ import 'server-only';
  * Fehlt ein Kurs, wird nichts geschätzt – der Posten gilt als „ohne Kurs“.
  */
 
-import { closeAt, relChange } from '@/lib/domain/change';
+import { closeAt, hourlyFactors, relChange } from '@/lib/domain/change';
 
 const UA = { 'user-agent': 'Mozilla/5.0 (Jarvis read-only)', accept: 'application/json' };
 const YAHOO = ['https://query1.finance.yahoo.com', 'https://query2.finance.yahoo.com'];
@@ -116,6 +116,11 @@ const METAL_FUT: Record<Metal, string> = { gold: 'GC=F', silver: 'SI=F', platinu
  * die relative Bewegung entspricht dem Spotpreis, der Wert selbst kommt weiter von gold.de / gold-api.com. null = nicht abrufbar.
  */
 export async function metalChange24h(metal: Metal): Promise<number | null> {
+  return (await metalTrend(metal)).change;
+}
+
+/** 24-h-Änderung und Stundenverlauf (Faktoren relativ zu jetzt) eines Edelmetalls. */
+export async function metalTrend(metal: Metal): Promise<{ change: number | null; spark: number[] | null }> {
   return cached(`m24:${metal}`, 120_000, async () => {
     try {
       const j = await yahoo<ChartResp & { chart?: { result?: Array<{ timestamp?: number[] }> } }>(`/v8/finance/chart/${encodeURIComponent(METAL_FUT[metal])}?range=5d&interval=60m`);
@@ -123,9 +128,10 @@ export async function metalChange24h(metal: Metal): Promise<number | null> {
       const now = res?.meta?.regularMarketPrice;
       const ts = res?.timestamp ?? [];
       const closes = res?.indicators?.quote?.[0]?.close ?? [];
-      if (!now || !ts.length) return null;
-      return relChange(now, closeAt(ts, closes, Math.floor(Date.now() / 1000) - 86_400));
-    } catch (e) { console.error('[metall 24h]', metal, (e as Error).message); return null; }
+      if (!now || !ts.length) return { change: null, spark: null };
+      const nowSec = Math.floor(Date.now() / 1000);
+      return { change: relChange(now, closeAt(ts, closes, nowSec - 86_400)), spark: hourlyFactors(ts, closes, now, nowSec) };
+    } catch (e) { console.error('[metall 24h]', metal, (e as Error).message); return { change: null, spark: null }; }
   });
 }
 
