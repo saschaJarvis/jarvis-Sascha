@@ -2,12 +2,12 @@
 import { z } from 'zod';
 import { requireUser } from '@/server/auth';
 import { coinHistory } from '@/server/history';
-import { metalHistory, type HistRange } from '@/server/markets';
+import { metalHistory, RANGE_CFG, type HistRange } from '@/server/markets';
 import { valueSeries } from '@/lib/domain/change';
 import type { PriceCoin } from '@/server/wallets';
 
 const Input = z.object({
-  range: z.enum(['7d', '1m', '1y']),
+  range: z.enum(['7d', '1m', '1y', '3y', '5y']),
   coins: z.array(z.object({ coin: z.string().regex(/^[a-z]{2,8}$/), aed: z.number().nonnegative() })).max(60),
   stableAed: z.number().nonnegative(),
   gold: z.number().nonnegative(), silver: z.number().nonnegative(), platinum: z.number().nonnegative(),
@@ -23,7 +23,7 @@ export async function assetHistoryAction(raw: z.input<typeof Input>): Promise<Hi
   if (!p.success) return { error: 'Ungültige Anfrage.' };
   const { range, coins, stableAed } = p.data;
   const r = range as HistRange;
-  const points = { '7d': 57, '1m': 61, '1y': 92 }[r];
+  const points = RANGE_CFG[r].points;
 
   const [coinF, gf, sf, pf] = await Promise.all([
     Promise.all(coins.filter((c) => c.aed > 0).map(async (c) => ({ valueNow: c.aed, factors: await coinHistory(c.coin as PriceCoin, r) }))),

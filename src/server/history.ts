@@ -23,6 +23,7 @@ export async function coinHistory(coin: PriceCoin, range: HistRange): Promise<nu
       }
     } catch { /* Ausweich */ }
   }
+  if (!c.geckoDays) return null;
   try {
     const r = await fetch(`https://api.coingecko.com/api/v3/coins/${GECKO[coin]}/market_chart?vs_currency=eur&days=${c.geckoDays}`, { next: { revalidate: c.ttl }, signal: AbortSignal.timeout(6000) });
     if (!r.ok) return null;

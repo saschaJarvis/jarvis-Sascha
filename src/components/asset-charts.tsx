@@ -19,12 +19,14 @@ type Key = 'krypto' | 'gold' | 'silber' | 'platin';
 export interface TrendItem { key: Key; label: string; aed: number; change: Change | null; series: number[] | null }
 export interface Holdings { coins: Array<{ coin: string; aed: number }>; stableAed: number; gold: number; silver: number; platinum: number }
 
-type Range = '24h' | '7d' | '1m' | '1y';
+type Range = '24h' | '7d' | '1m' | '1y' | '3y' | '5y';
 const RANGES: Array<{ k: Range; label: string; long: string; span: number }> = [
   { k: '24h', label: '24 H', long: 'letzte 24 h', span: 86_400_000 },
   { k: '7d', label: '7 T', long: 'letzte 7 Tage', span: 7 * 86_400_000 },
   { k: '1m', label: '1 M', long: 'letzter Monat', span: 30 * 86_400_000 },
   { k: '1y', label: '1 J', long: 'letztes Jahr', span: 365 * 86_400_000 },
+  { k: '3y', label: '3 J', long: 'letzte 3 Jahre', span: 3 * 365 * 86_400_000 },
+  { k: '5y', label: '5 J', long: 'letzte 5 Jahre', span: 5 * 365 * 86_400_000 },
 ];
 
 // ───────────────────────── Verlaufskarten ─────────────────────────
@@ -71,7 +73,7 @@ export function TrendGrid({ items, asOf, holdings, eurAed }: { items: TrendItem[
         <div role="radiogroup" aria-label="Zeitraum" className="flex border border-line">
           {RANGES.map((r) => (
             <button key={r.k} type="button" role="radio" aria-checked={range === r.k} onClick={() => choose(r.k)}
-              className={`mono min-h-8 px-2.5 text-[.62rem] font-semibold tracking-wider ${range === r.k ? 'bg-sea-soft text-sea glow' : 'text-muted hover:text-ink'}`}>
+              className={`mono min-h-8 px-2 text-[.62rem] font-semibold tracking-wider ${range === r.k ? 'bg-sea-soft text-sea glow' : 'text-muted hover:text-ink'}`}>
               {r.label}
             </button>
           ))}
@@ -143,9 +145,9 @@ function Spark({ series, color, label, range }: { series: number[]; color: strin
     const d = new Date(Date.now() - ago);
     return range.k === '7d'
       ? d.toLocaleString('de-DE', { timeZone: 'Asia/Dubai', weekday: 'short', hour: '2-digit', minute: '2-digit' })
-      : d.toLocaleDateString('de-DE', { timeZone: 'Asia/Dubai', day: '2-digit', month: '2-digit', ...(range.k === '1y' ? { year: '2-digit' } : {}) });
+      : d.toLocaleDateString('de-DE', { timeZone: 'Asia/Dubai', day: '2-digit', month: '2-digit', ...(range.k === '1m' ? {} : { year: '2-digit' }) });
   };
-  const startLabel = { '24h': '−24 h', '7d': '−7 T', '1m': '−1 M', '1y': '−1 J' }[range.k];
+  const startLabel = { '24h': '−24 h', '7d': '−7 T', '1m': '−1 M', '1y': '−1 J', '3y': '−3 J', '5y': '−5 J' }[range.k];
 
   const pick = (clientX: number, el: SVGSVGElement) => {
     const r = el.getBoundingClientRect();

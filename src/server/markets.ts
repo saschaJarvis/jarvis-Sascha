@@ -163,11 +163,14 @@ export async function platinumPrice(): Promise<MetalPrice | null> {
   return null;
 }
 
-export type HistRange = '7d' | '1m' | '1y';
+export type HistRange = '7d' | '1m' | '1y' | '3y' | '5y';
 export const RANGE_CFG: Record<HistRange, { span: number; points: number; yahoo: string; kraken: number; geckoDays: number; ttl: number }> = {
   '7d': { span: 7 * 86_400, points: 57, yahoo: 'range=1mo&interval=60m', kraken: 60, geckoDays: 7, ttl: 900 },
   '1m': { span: 30 * 86_400, points: 61, yahoo: 'range=3mo&interval=60m', kraken: 240, geckoDays: 30, ttl: 3600 },
   '1y': { span: 365 * 86_400, points: 92, yahoo: 'range=1y&interval=1d', kraken: 1440, geckoDays: 365, ttl: 21_600 },
+  // Kraken liefert max. 720 Kerzen → Wochenkerzen; CoinGecko kostenlos nur bis 365 Tage (geckoDays 0 = kein Ausweich)
+  '3y': { span: 3 * 365 * 86_400, points: 79, yahoo: 'range=5y&interval=1wk', kraken: 10_080, geckoDays: 0, ttl: 43_200 },
+  '5y': { span: 5 * 365 * 86_400, points: 87, yahoo: 'range=5y&interval=1wk', kraken: 10_080, geckoDays: 0, ttl: 43_200 },
 };
 
 /** Verlauf eines Edelmetalls über 7 Tage / 1 Monat / 1 Jahr als Faktoren relativ zu jetzt (Yahoo-Futures). */
