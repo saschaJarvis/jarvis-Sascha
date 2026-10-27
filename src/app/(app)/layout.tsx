@@ -5,6 +5,7 @@ import { getFx, getWeather } from '@/server/ext';
 import { BottomNav, Shell, TopBar } from '@/components/bottom-nav';
 import { JarvisDock } from '@/components/jarvis-dock';
 import { AI_CONSENT, claudeAvailable } from '@/server/claude';
+import { ttsAvailable } from '@/server/tts';
 
 export const dynamic = 'force-dynamic';
 // Kontoauszug-Auswertung läuft nach der Antwort (after()) und braucht bei langen Auszügen 1–3 Minuten
@@ -26,7 +27,7 @@ export default async function AppLayout({ children }: { children: React.ReactNod
       <TopBar ambient={ambient} />
       <Shell>{children}</Shell>
       <BottomNav />
-      <JarvisDock available={claudeAvailable()} consented={consent} />
+      <JarvisDock available={claudeAvailable()} consented={consent} cloudVoice={ttsAvailable()} />
     </div>
   );
 }

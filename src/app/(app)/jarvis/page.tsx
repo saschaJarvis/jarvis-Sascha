@@ -6,6 +6,7 @@ import { formatDue, PageTitle } from '@/components/ui';
 import { QuickCapture } from '@/components/quick-capture';
 import { AI_CONSENT, claudeAvailable } from '@/server/claude';
 import { JarvisChat } from './chat';
+import { ttsAvailable } from '@/server/tts';
 
 const QUESTIONS = [
   { k: 'heute', q: 'Was muss ich heute machen?' },
@@ -55,7 +56,7 @@ export default async function JarvisPage({ searchParams }: { searchParams: Promi
   return (
     <div>
       <PageTitle title="Frag Jarvis" />
-      {claudeAvailable() ? <JarvisChat consented={consent} /> : (
+      {claudeAvailable() ? <JarvisChat consented={consent} cloudVoice={ttsAvailable()} /> : (
         <p className="notice notice-info">Claude ist noch nicht verbunden. Sobald der API-Schlüssel bei Vercel eingetragen ist, kannst du hier frei fragen.</p>
       )}
       <h2 className="eyebrow mt-8 mb-2">Schnellantworten ohne KI</h2>

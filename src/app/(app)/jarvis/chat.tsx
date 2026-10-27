@@ -1,14 +1,15 @@
 'use client';
 import Link from 'next/link';
 import { useEffect, useRef, useState, useTransition } from 'react';
-import { primeSpeech, speak, stopSpeaking, useDictation } from '@/components/voice';
+import { primeSpeech, setCloudVoice, speak, stopSpeaking, useDictation } from '@/components/voice';
 import { askJarvisAction } from './chat-actions';
 
 interface Turn { role: 'user' | 'assistant'; text: string; proposals?: string[]; error?: boolean }
 
 const STARTERS = ['Was ist diese Woche wirklich wichtig?', 'Was muss ich vor der Abmeldung in Mainz erledigen?', 'Welche Unterlagen fehlen mir für Dubai?'];
 
-export function JarvisChat({ consented, listenSignal = 0, id = 'ask' }: { consented: boolean; listenSignal?: number; id?: string }) {
+export function JarvisChat({ consented, listenSignal = 0, id = 'ask', cloudVoice = false }: { consented: boolean; listenSignal?: number; id?: string; cloudVoice?: boolean }) {
+  useEffect(() => { setCloudVoice(cloudVoice); }, [cloudVoice]);
   const [turns, setTurns] = useState<Turn[]>([]);
   const [text, setText] = useState('');
   const [consent, setConsent] = useState(consented);
@@ -27,7 +28,7 @@ export function JarvisChat({ consented, listenSignal = 0, id = 'ask' }: { consen
     setTurns((x) => [...x, { role: 'user', text: question }]);
     setText('');
     start(async () => {
-      const r = await askJarvisAction({ question, history, consent });
+      const r = await askJarvisAction({ question, history, consent, voice: byVoice });
       setTurns((x) => [...x, r.error ? { role: 'assistant', text: r.error, error: true } : { role: 'assistant', text: r.answer ?? '', proposals: r.proposals }]);
       if (byVoice || voiceReply) speak(r.error ?? r.answer ?? '');
       if (!r.error) setConsent(true);

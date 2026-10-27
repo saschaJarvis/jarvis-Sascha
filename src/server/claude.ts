@@ -222,13 +222,14 @@ export type Proposal = z.infer<typeof Proposal>;
 export interface ChatTurn { role: 'user' | 'assistant'; text: string }
 
 export async function chat(history: ChatTurn[], question: string, contextData: string, now: string,
-  onProposal: (p: Proposal) => Promise<string>): Promise<string> {
+  onProposal: (p: Proposal) => Promise<string>, style: 'text' | 'voice' = 'text'): Promise<string> {
   if (fake()) {
     await onProposal({ title: 'Testvorschlag aus dem Chat', why: 'Claude-Testmodus', domain: 'general' });
     return `Testantwort auf: „${question.slice(0, 80)}“. Ich habe einen Vorschlag in deinen Eingang gelegt.`;
   }
   const system = `Du bist Jarvis, der persönliche Assistent von Sascha Lueck (Umzug Mainz → Dubai, deutsche Firma, übergebene Wohnung Beachwalk 3 by Imtiaz in Dubai Islands, kein Off-Plan mehr). Jetzt: ${now}.
-Antworte auf Deutsch, kurz, klar, freundlich – wie ein ruhiger Chief of Staff. Lieber ein konkreter nächster Schritt als lange Listen.
+Antworte auf Deutsch, kurz, klar, freundlich – wie ein ruhiger Chief of Staff. Lieber ein konkreter nächster Schritt als lange Listen.${style === 'voice' ? `
+Diese Antwort wird VORGELESEN (Sprachausgabe): höchstens 3–4 kurze Sätze, keine Aufzählungen, kein Markdown, keine Emojis, keine Links. Datumsangaben und Beträge so schreiben, wie man sie spricht (z. B. „am 3. November“, „1.200 Euro“).` : ''}
 Du kennst nur die Daten unten aus Saschas Jarvis-App. Wenn etwas dort nicht steht, sag das ehrlich und rate nicht.
 Du kannst NICHTS senden, kündigen, bezahlen oder ändern. Du kannst höchstens mit „aufgabe_vorschlagen“ eine Aufgabe vorschlagen (landet zur Bestätigung im Eingang) – nur wenn Sascha es möchte oder es klar hilft.
 Keine Rechts- oder Steuerberatung: allgemeine Hinweise ja, bei Verbindlichem auf Fachleute verweisen.

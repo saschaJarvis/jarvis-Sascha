@@ -56,28 +56,88 @@ export function useDictation(onPartial: (text: string) => void, onFinal: (text: 
   return { supported, listening, error, start, stop };
 }
 
-/** Antwort auf Deutsch vorlesen (Markdown-Zeichen werden entfernt). */
+// Cloud-Stimme (ElevenLabs) über /api/tts – wird von der App eingeschaltet, wenn der Schlüssel hinterlegt ist
+let cloud = false;
+export function setCloudVoice(enabled: boolean) { cloud = enabled; }
+
+let audio: HTMLAudioElement | null = null;
+let lastUrl: string | null = null;
+const player = () => (audio ??= typeof Audio !== 'undefined' ? new Audio() : null);
+
+/** Antwort auf Deutsch vorlesen: ElevenLabs, falls verbunden – sonst (oder bei Fehler) die Gerätestimme. */
 export function speak(text: string) {
-  if (typeof window === 'undefined' || !('speechSynthesis' in window) || !text) return;
+  if (typeof window === 'undefined' || !text) return;
+  stopSpeaking();
+  if (cloud) {
+    fetch('/api/tts', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ text }) })
+      .then(async (r) => {
+        if (!r.ok) throw new Error();
+        const a = player();
+        if (!a) throw new Error();
+        if (lastUrl) URL.revokeObjectURL(lastUrl);
+        lastUrl = URL.createObjectURL(await r.blob());
+        a.src = lastUrl;
+        await a.play();
+      })
+      .catch(() => deviceSpeak(text));
+    return;
+  }
+  deviceSpeak(text);
+}
+
+/** Bestimmte Stimme probehören (Einstellungen). */
+export async function previewVoice(text: string, voiceId: string, speed: number, quality: 'fast' | 'best'): Promise<string | null> {
+  primeSpeech();
+  const r = await fetch('/api/tts', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ text, voiceId, speed, quality }) });
+  if (!r.ok) return ((await r.json().catch(() => ({}))) as { error?: string }).error ?? 'Probehören fehlgeschlagen.';
+  const a = player();
+  if (!a) return null;
+  if (lastUrl) URL.revokeObjectURL(lastUrl);
+  lastUrl = URL.createObjectURL(await r.blob());
+  a.src = lastUrl;
+  await a.play().catch(() => {});
+  return null;
+}
+
+function deviceSpeak(text: string) {
+  if (!('speechSynthesis' in window)) return;
   const clean = text.replace(/[*_#`>|]/g, '').replace(/\[(.*?)\]\(.*?\)/g, '$1').replace(/\s+/g, ' ').trim();
   const synth = window.speechSynthesis;
   synth.cancel();
   const u = new SpeechSynthesisUtterance(clean);
   u.lang = 'de-DE';
   const voices = synth.getVoices().filter((v) => v.lang?.toLowerCase().startsWith('de'));
-  u.voice = voices.find((v) => /premium|enhanced|natural/i.test(v.name)) ?? voices[0] ?? null;
+  u.voice = voices.find((v) => /premium|enhanced|natural/i.test(`${v.name} ${v.voiceURI}`)) ?? voices[0] ?? null;
   u.rate = 1.05;
   synth.speak(u);
 }
 
 export function stopSpeaking() {
-  if (typeof window !== 'undefined' && 'speechSynthesis' in window) window.speechSynthesis.cancel();
+  if (typeof window === 'undefined') return;
+  if ('speechSynthesis' in window) window.speechSynthesis.cancel();
+  audio?.pause();
 }
 
 /** Leere Äußerung im Tipp-Moment – danach darf Safari auch später (nach der Antwort) vorlesen. */
 export function primeSpeech() {
-  if (typeof window === 'undefined' || !('speechSynthesis' in window)) return;
-  const u = new SpeechSynthesisUtterance(' ');
-  u.volume = 0;
-  window.speechSynthesis.speak(u);
+  if (typeof window === 'undefined') return;
+  if ('speechSynthesis' in window) {
+    const u = new SpeechSynthesisUtterance(' ');
+    u.volume = 0;
+    window.speechSynthesis.speak(u);
+  }
+  // Audio-Element im Tipp-Moment mit Stille starten – danach darf es die ElevenLabs-Antwort abspielen
+  const a = player();
+  if (a && a.paused) { a.src = SILENCE; a.play().catch(() => {}); }
 }
+
+const SILENCE = (() => {
+  // 0,1 s Stille als WAV (8 kHz, 8 Bit, mono)
+  const n = 800, b = new Uint8Array(44 + n), v = new DataView(b.buffer);
+  const w = (o: number, t: string) => [...t].forEach((c, i) => (b[o + i] = c.charCodeAt(0)));
+  w(0, 'RIFF'); v.setUint32(4, 36 + n, true); w(8, 'WAVEfmt '); v.setUint32(16, 16, true); v.setUint16(20, 1, true); v.setUint16(22, 1, true);
+  v.setUint32(24, 8000, true); v.setUint32(28, 8000, true); v.setUint16(32, 1, true); v.setUint16(34, 8, true); w(36, 'data'); v.setUint32(40, n, true);
+  b.fill(128, 44);
+  let bin = ''; b.forEach((x) => (bin += String.fromCharCode(x)));
+  return typeof btoa === 'function' ? `data:audio/wav;base64,${btoa(bin)}` : '';
+})();

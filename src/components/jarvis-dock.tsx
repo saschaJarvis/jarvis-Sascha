@@ -7,7 +7,7 @@ import { JarvisChat } from '@/app/(app)/jarvis/chat';
  * Jarvis-Knopf unten rechts auf jeder Seite: öffnet den Chat mit Claude als Panel und hört sofort zu.
  * Der Verlauf bleibt erhalten, solange die App offen ist (auch beim Seitenwechsel).
  */
-export function JarvisDock({ available, consented }: { available: boolean; consented: boolean }) {
+export function JarvisDock({ available, consented, cloudVoice }: { available: boolean; consented: boolean; cloudVoice: boolean }) {
   const path = usePathname();
   const [open, setOpen] = useState(false);
   const [listen, setListen] = useState(0);
@@ -48,7 +48,7 @@ export function JarvisDock({ available, consented }: { available: boolean; conse
             <span className="mono text-[.7rem] font-semibold uppercase tracking-[.25em] text-sea glow">◉ Jarvis · Claude</span>
             <button type="button" onClick={() => setOpen(false)} className="btn btn-quiet" aria-label="Schließen">✕</button>
           </div>
-          <JarvisChat consented={consented} listenSignal={listen} id="ask-dock" />
+          <JarvisChat consented={consented} listenSignal={listen} id="ask-dock" cloudVoice={cloudVoice} />
         </div>
       </div>
     </>

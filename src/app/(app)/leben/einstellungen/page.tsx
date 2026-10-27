@@ -5,6 +5,9 @@ import { aiConsentAction, killSwitchAction, requestDeletionAction, resumeAction 
 import { AI_CONSENT, claudeAvailable, CLAUDE_MODEL } from '@/server/claude';
 import { SettingsForm } from './settings-form';
 import { AlertSettings } from './alert-settings';
+import { VoiceSettings, type VoiceConfig } from './voice-settings';
+import { DEFAULT_VOICE, listVoices, quota, ttsAvailable } from '@/server/tts';
+import { headers } from 'next/headers';
 import { logoutAction } from '@/app/(auth)/actions';
 
 export default async function SettingsPage({ searchParams }: { searchParams: Promise<{ geloescht?: string }> }) {
@@ -22,6 +25,23 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
     `select a.kinds, a.price_threshold_pct::text pct, a.other_threshold_pct::text opct, a.push_enabled, (select count(*)::int from push_subscriptions) devices,
             a.telegram_bot_name bot, a.telegram_chat_id is not null linked, a.telegram_link_code code
        from alert_settings a where a.user_id = auth.uid()`));
+  const tts = ttsAvailable();
+  const [voiceList, q, [vs], tokens, h] = await Promise.all([
+    tts ? listVoices().then((v) => ({ v, err: null as string | null })).catch((e: Error) => ({ v: [], err: e.message })) : { v: [], err: null },
+    tts ? quota() : null,
+    db(s).run((x) => x<{ voice_id: string | null; voice_name: string | null; speed: string; quality: 'fast' | 'best' }>('select voice_id, voice_name, speed::text speed, quality from voice_settings where user_id = auth.uid()')),
+    db(s).run((x) => x<{ id: string; label: string; created_at: Date; last_used_at: Date | null }>('select id, label, created_at, last_used_at from siri_tokens where revoked_at is null order by created_at desc')),
+    headers(),
+  ]);
+  const dfmt = (d: Date) => new Intl.DateTimeFormat('de-DE', { timeZone: profile.timezone, day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }).format(d);
+  const voice: VoiceConfig = {
+    connected: tts, listError: voiceList.err,
+    voices: voiceList.v.map(({ id, name, info, mine }) => ({ id, name, info, mine })),
+    current: { id: vs?.voice_id ?? DEFAULT_VOICE.id, name: vs?.voice_name ?? DEFAULT_VOICE.name, speed: vs ? Number(vs.speed) : 1, quality: vs?.quality ?? 'fast' },
+    quota: q ? { used: q.used, limit: q.limit, tier: q.tier, resetsAt: q.resetsAt?.toISOString() ?? null } : null,
+    tokens: tokens.map((t) => ({ id: t.id, label: t.label, created: dfmt(t.created_at), lastUsed: t.last_used_at ? dfmt(t.last_used_at) : null })),
+    baseUrl: `https://${h.get('x-forwarded-host') ?? h.get('host') ?? 'jarvis-sascha.vercel.app'}`,
+  };
   const kinds = { outflow: true, inflow: true, price: true, statement: true, other: true, ...(al?.kinds ?? {}) };
 
   return (
@@ -42,6 +62,12 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
             telegramBot: al?.bot ?? null, telegramLinked: !!al?.linked, telegramCode: al?.code ?? null,
             vapidKey: process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY ?? null,
           }} />
+        </Section>
+      </div>
+
+      <div id="stimme" className="scroll-mt-20">
+        <Section title="Stimme & Siri">
+          <VoiceSettings cfg={voice} />
         </Section>
       </div>
 
