@@ -1,7 +1,7 @@
 'use server';
 import { z } from 'zod';
 import { requireUser } from '@/server/auth';
-import { coinHistory } from '@/server/history';
+import { coinHistory, fxHistory } from '@/server/history';
 import { metalHistory, RANGE_CFG, type HistRange } from '@/server/markets';
 import { valueSeries } from '@/lib/domain/change';
 import type { PriceCoin } from '@/server/wallets';
@@ -37,4 +37,11 @@ export async function assetHistoryAction(raw: z.input<typeof Input>): Promise<Hi
     : { series: null, complete: false };
   const metal = (aed: number, f: number[] | null): RangeSeries => ({ series: aed > 0 && f ? valueSeries([{ valueNow: aed, factors: f }], points) : null, complete: true });
   return { krypto, gold: metal(p.data.gold, gf), silber: metal(p.data.silver, sf), platin: metal(p.data.platinum, pf) };
+}
+
+/** €/AED-Kursverlauf für die Kurskarte. */
+export async function fxHistoryAction(range: '24h' | '7d' | '1m' | '1y' | '5y'): Promise<number[] | null> {
+  await requireUser();
+  if (!['24h', '7d', '1m', '1y', '5y'].includes(range)) return null;
+  return fxHistory(range);
 }
