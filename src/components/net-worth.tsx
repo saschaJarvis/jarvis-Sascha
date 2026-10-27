@@ -50,11 +50,11 @@ export function NetWorthBlock({ nw, compact = false, coinPie = true }: { nw: Net
         gold: nw.gold.aed, silver: nw.silver.aed, platinum: nw.platinum.aed,
         stocks: nw.stocks.rows.filter((r) => r.aed != null && r.aed > 0).map((r) => ({ symbol: r.symbol, aed: r.aed! })),
       }} asOf={nw.crypto.asOf.toLocaleTimeString('de-DE', { timeZone: 'Asia/Dubai', hour: '2-digit', minute: '2-digit', second: '2-digit' })} items={[
-        { key: 'krypto', label: 'Krypto', aed: nw.crypto.aed, change: nw.crypto.change, series: nw.crypto.series },
+        { key: 'aktien', label: 'Aktien', aed: nw.stocks.aed, change: nw.stocks.change, series: nw.stocks.series },
         { key: 'gold', label: 'Gold', aed: nw.gold.aed, change: nw.gold.change, series: nw.gold.series },
         { key: 'silber', label: 'Silber', aed: nw.silver.aed, change: nw.silver.change, series: nw.silver.series },
         { key: 'platin', label: 'Platin', aed: nw.platinum.aed, change: nw.platinum.change, series: nw.platinum.series },
-        { key: 'aktien', label: 'Aktien', aed: nw.stocks.aed, change: nw.stocks.change, series: nw.stocks.series },
+        { key: 'krypto', label: 'Krypto', aed: nw.crypto.aed, change: nw.crypto.change, series: nw.crypto.series },
       ]} />
 
       {pos > 0 && (
