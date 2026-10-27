@@ -6,7 +6,7 @@ import { ASSET_COLOR, coinSlices } from './asset-colors';
 const nf = (n: number, d = 0) => n.toLocaleString('de-DE', { minimumFractionDigits: d, maximumFractionDigits: d });
 
 /** Gesamtvermögen: Konten + Krypto + Gold + Platin + Silber + Aktien. Basis AED, dazu EUR. Fehlende Kurse werden genannt, nie geschätzt. */
-export function NetWorthBlock({ nw, compact = false }: { nw: NetWorth; compact?: boolean }) {
+export function NetWorthBlock({ nw, compact = false, coinPie = true }: { nw: NetWorth; compact?: boolean; coinPie?: boolean }) {
   const parts = [
     { key: 'konten', label: 'Konten', aed: nw.accounts.aed, n: nw.accounts.count, sub: `${nw.accounts.count} Konto${nw.accounts.count === 1 ? '' : 'en'}`, color: ASSET_COLOR.konten },
     { key: 'krypto', label: 'Krypto', aed: nw.crypto.aed, n: nw.crypto.count, sub: nw.crypto.count ? `${Object.values(nw.crypto.holdings).filter((v) => v != null && v > 0).length} Coins` : 'keine Wallets', color: ASSET_COLOR.krypto },
@@ -58,7 +58,7 @@ export function NetWorthBlock({ nw, compact = false }: { nw: NetWorth; compact?:
         <div className={`grid gap-4 border-t border-line pt-3 ${compact ? '' : 'sm:grid-cols-2'}`}>
           <Donut title="Aufteilung Vermögen" centerLabel="AED gesamt" centerValue={`${(nw.totalAed / 1e6).toLocaleString('de-DE', { maximumFractionDigits: 2 })} Mio.`}
             slices={parts.map((p) => ({ key: p.key, label: p.label, aed: Math.max(0, p.aed), color: p.color }))} />
-          {nw.crypto.coins.length > 0 && (
+          {coinPie && nw.crypto.coins.length > 0 && (
             <Donut title="Krypto nach Coins" centerLabel="AED Krypto" centerValue={`${(nw.crypto.aed / 1e6).toLocaleString('de-DE', { maximumFractionDigits: 2 })} Mio.`}
               slices={coinSlices(nw.crypto.coins, Math.max(0, nw.crypto.aed - nw.crypto.coins.reduce((n, c) => n + c.aed, 0)))} />
           )}

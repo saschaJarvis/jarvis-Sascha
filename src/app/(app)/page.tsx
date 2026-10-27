@@ -21,8 +21,7 @@ import { loadExternalEvents } from '@/server/calendars';
 import { ensureBillTasks } from '@/server/bills';
 import { loadNetWorth } from '@/server/networth';
 import { NetWorthBlock } from '@/components/net-worth';
-import { StatementLine } from '@/components/statements';
-import { kickStatements, loadStatements } from '@/server/statements';
+import { kickStatements } from '@/server/statements';
 import { kickMetalInvoices } from '@/server/metal-invoices';
 import { AutoRefresh } from '@/components/auto-refresh';
 import { DOMAIN_LABEL as DOMAIN } from '@/lib/labels';
@@ -73,7 +72,7 @@ export default async function BridgePage() {
     loadExternalEvents(s, new Date(Date.now() - 8 * 86_400_000), new Date(Date.now() + 9 * 7 * 86_400_000)),
     loadNetWorth(s),
   ]);
-  const [weather, statements] = await Promise.all([getWeather(profile.timezone), loadStatements(s)]);
+  const weather = await getWeather(profile.timezone);
 
   const tz = profile.timezone;
   const now = new Date();
@@ -284,8 +283,7 @@ export default async function BridgePage() {
         {/* ───────────── RECHTS ───────────── */}
         <div className="order-3 grid min-w-0 grid-cols-1 content-start gap-4">
           <Panel n="04" title="Finanzen" href="/leben/finanzen" aside={fx ? `1 € = ${fx.eurAed.toLocaleString('de-DE', { minimumFractionDigits: 3, maximumFractionDigits: 3 })} AED` : 'Kurs fehlt'}>
-            <NetWorthBlock nw={nw} compact />
-            <div className="mt-3"><StatementLine rows={statements} /></div>
+            <NetWorthBlock nw={nw} compact coinPie={false} />
             <AutoRefresh seconds={20} />
           </Panel>
 
