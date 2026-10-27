@@ -188,3 +188,25 @@ export async function metalHistory(metal: Metal, range: HistRange): Promise<numb
     } catch (e) { console.error('[metall verlauf]', metal, range, (e as Error).message); return null; }
   });
 }
+
+type YRes = NonNullable<NonNullable<ChartResp['chart']>['result']>[number] & { timestamp?: number[] };
+async function yahooFactors(symbol: string, query: string, span: number, points: number, ttl: number): Promise<number[] | null> {
+  return cached(`yf:${symbol}:${query}:${points}`, ttl * 1000, async () => {
+    try {
+      const j = await yahoo<ChartResp>(`/v8/finance/chart/${encodeURIComponent(symbol)}?${query}`, ttl);
+      const res = j.chart?.result?.[0] as YRes | undefined;
+      const now = res?.meta?.regularMarketPrice;
+      const ts = res?.timestamp ?? [];
+      const closes = res?.indicators?.quote?.[0]?.close ?? [];
+      if (!now || !ts.length) return null;
+      return rangeFactors(ts, closes, now, Math.floor(Date.now() / 1000), span, points);
+    } catch (e) { console.error('[aktie verlauf]', symbol, (e as Error).message); return null; }
+  });
+}
+
+/** Verlauf einer Aktie/ETF als Faktoren relativ zu jetzt (Yahoo, in Handelswährung). 24 h = Stundenkerzen der letzten 5 Tage. */
+export async function stockHistory(symbol: string, range: '24h' | HistRange): Promise<number[] | null> {
+  if (range === '24h') return yahooFactors(symbol, 'range=5d&interval=60m', 86_400, 25, 300);
+  const c = RANGE_CFG[range];
+  return yahooFactors(symbol, c.yahoo, c.span, c.points, c.ttl);
+}

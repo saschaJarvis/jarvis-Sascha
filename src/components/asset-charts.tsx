@@ -15,9 +15,9 @@ const sign = (n: number) => (n > 0 ? '+' : n < 0 ? '−' : '±');
 const short = (n: number) => (Math.abs(n) >= 1e6 ? `${nf(n / 1e6, 2)} Mio.` : Math.abs(n) >= 1e4 ? `${nf(n / 1e3, 0)} Tsd.` : nf(n));
 
 export interface Change { aed: number; eur: number | null; pct: number | null; complete: boolean }
-type Key = 'krypto' | 'gold' | 'silber' | 'platin';
+type Key = 'krypto' | 'gold' | 'silber' | 'platin' | 'aktien';
 export interface TrendItem { key: Key; label: string; aed: number; change: Change | null; series: number[] | null }
-export interface Holdings { coins: Array<{ coin: string; aed: number }>; stableAed: number; gold: number; silver: number; platinum: number }
+export interface Holdings { coins: Array<{ coin: string; aed: number }>; stableAed: number; gold: number; silver: number; platinum: number; stocks: Array<{ symbol: string; aed: number }> }
 
 type Range = '24h' | '7d' | '1m' | '1y' | '3y' | '5y';
 const RANGES: Array<{ k: Range; label: string; long: string; span: number }> = [
@@ -80,7 +80,11 @@ export function TrendGrid({ items, asOf, holdings, eurAed }: { items: TrendItem[
         </div>
       </div>
       <div className={`grid grid-cols-2 gap-2 transition-opacity ${busy ? 'opacity-60' : ''}`} aria-busy={busy}>
-        {view.map((i) => <TrendCard key={i.key} item={i} range={meta} busy={busy} onCycle={next} />)}
+        {view.map((i, n) => (
+          <div key={i.key} className={view.length % 2 === 1 && n === view.length - 1 ? 'col-span-2' : ''}>
+            <TrendCard item={i} range={meta} busy={busy} onCycle={next} />
+          </div>
+        ))}
       </div>
       <div className="flex justify-between text-[.6rem] text-muted">
         <span>{busy ? 'Lade Verlauf …' : error ? <span className="text-warn">{error}</span> : 'Kasten antippen = nächster Zeitraum'}</span>

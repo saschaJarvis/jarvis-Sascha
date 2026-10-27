@@ -5,7 +5,7 @@ import { getFx, type Fx } from './ext';
 import { coinPrices, loadAdaAccount, loadAlgoAccount, loadBtcAccount, loadEthAccount, loadXrpAccount, loadZecAccount, loadAtomAccount, loadXlmAccount, loadLtcAccount, loadDotAccount, loadVetAccount, loadSolAccount, WALLETS_SQL, MANUAL_SQL, MANUAL_SYMBOLS, type ManualRow, type Coin, type PriceCoin } from './wallets';
 import { goldValueUsd, sumParts, toAed, AED_PER_USD } from '@/lib/domain/networth';
 import { portfolioChange, valueSeries } from '@/lib/domain/change';
-import { eurPer, goldDe, metalTrend, platinumPrice, quote, silverPrice, type MetalPrice } from './markets';
+import { eurPer, goldDe, metalTrend, platinumPrice, quote, silverPrice, stockHistory, type MetalPrice } from './markets';
 
 const fake = () => process.env.CRYPTO_FAKE === '1' && process.env.AUTH_PROVIDER !== 'supabase';
 
@@ -64,6 +64,7 @@ export interface NetWorth {
   stocks: {
     aed: number; count: number; error: boolean;
     change: { aed: number; eur: number | null; pct: number | null; complete: boolean } | null;
+    series: number[] | null;              // Wert der letzten 24 h in AED, stündlich
     rows: Array<StockRow & { price: number | null; currency: string | null; eur: number | null; aed: number | null; changePct: number | null; exchange: string | null }>;
   };
 }
@@ -179,6 +180,9 @@ export async function loadNetWorth(s: Session): Promise<NetWorth> {
     };
   }));
   const stocks = sumParts(stockRows.map((r) => r.aed));
+  const stockValued = stockRows.filter((r) => r.aed != null && r.aed > 0);
+  const stockF = await Promise.all(stockValued.map(async (r) => ({ valueNow: r.aed!, factors: await stockHistory(r.symbol, '24h') })));
+  const stockSeries = stockF.some((x) => x.factors) ? valueSeries(stockF) : null;
   const stockCh = portfolioChange(stockRows.filter((r) => r.aed != null).map((r) => ({ valueNow: r.aed!, change: r.changePct })));
 
   const total = sumParts([acc.aed, crypto.aed, gold.aed, plat.aed, silv.aed, stocks.aed]);
@@ -194,7 +198,7 @@ export async function loadNetWorth(s: Session): Promise<NetWorth> {
     platinum: await metalBlock(platOnly, platRows, plat.aed, pp, eurAed, pc),
     silver: await metalBlock(silvOnly, silvRows, silv.aed, sp, eurAed, sc),
     stocks: {
-      aed: stocks.aed, count: rows.stocks.length, error: stocks.missing > 0, rows: stockRows,
+      aed: stocks.aed, count: rows.stocks.length, error: stocks.missing > 0, rows: stockRows, series: stockSeries,
       change: stockRows.some((r) => r.aed != null) ? { aed: stockCh.abs, eur: eurAed ? stockCh.abs / eurAed : null, pct: stockCh.pct, complete: stockCh.complete } : null,
     },
   };
