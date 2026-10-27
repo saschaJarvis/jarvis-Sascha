@@ -119,10 +119,10 @@ export const WALLETS_SQL = `select id, chain, address, label, created_at from (
   union all select id, 'dot'::text, address, label, created_at from dot_wallets where deleted_at is null
   union all select id, 'vet'::text, address, label, created_at from vet_wallets where deleted_at is null
   union all select id, 'sol'::text, address, label, created_at from sol_wallets where deleted_at is null) w order by created_at`;
-const GECKO: Record<PriceCoin, string> = { xrp: 'ripple', eth: 'ethereum', btc: 'bitcoin', ada: 'cardano', algo: 'algorand', zec: 'zcash', atom: 'cosmos', xlm: 'stellar', ltc: 'litecoin', dot: 'polkadot', vet: 'vechain', sol: 'solana', qnt: 'quant-network', fet: 'fetch-ai', link: 'chainlink', render: 'render-token', gala: 'gala', hbar: 'hedera-hashgraph', cspr: 'casper-network', fil: 'filecoin', best: 'bitpanda-ecosystem-token', iota: 'iota', avax: 'avalanche-2', trx: 'tron' };
+export const GECKO: Record<PriceCoin, string> = { xrp: 'ripple', eth: 'ethereum', btc: 'bitcoin', ada: 'cardano', algo: 'algorand', zec: 'zcash', atom: 'cosmos', xlm: 'stellar', ltc: 'litecoin', dot: 'polkadot', vet: 'vechain', sol: 'solana', qnt: 'quant-network', fet: 'fetch-ai', link: 'chainlink', render: 'render-token', gala: 'gala', hbar: 'hedera-hashgraph', cspr: 'casper-network', fil: 'filecoin', best: 'bitpanda-ecosystem-token', iota: 'iota', avax: 'avalanche-2', trx: 'tron' };
 
 // null = nicht bei Kraken gelistet → direkt CoinGecko (eine unbekannte Kraken-Paarung würde die ganze Abfrage scheitern lassen)
-const KRAKEN_PAIR: Record<PriceCoin, string | null> = { btc: 'XBT', eth: 'ETH', xrp: 'XRP', ada: 'ADA', algo: 'ALGO', zec: 'ZEC', atom: 'ATOM', xlm: 'XLM', ltc: 'LTC', dot: 'DOT', vet: 'VET', sol: 'SOL', qnt: 'QNT', fet: 'FET', link: 'LINK', render: 'RENDER', gala: 'GALA', hbar: 'HBAR', cspr: null, fil: 'FIL', best: null, iota: null, avax: 'AVAX', trx: 'TRX' };
+export const KRAKEN_PAIR: Record<PriceCoin, string | null> = { btc: 'XBT', eth: 'ETH', xrp: 'XRP', ada: 'ADA', algo: 'ALGO', zec: 'ZEC', atom: 'ATOM', xlm: 'XLM', ltc: 'LTC', dot: 'DOT', vet: 'VET', sol: 'SOL', qnt: 'QNT', fet: 'FET', link: 'LINK', render: 'RENDER', gala: 'GALA', hbar: 'HBAR', cspr: null, fil: 'FIL', best: null, iota: null, avax: 'AVAX', trx: 'TRX' };
 const PRICE_TTL = 10; // Sekunden – „quasi Echtzeit“; eine Ticker-Abfrage für alle Coins, Kraken erlaubt ~1 Abfrage/s je IP
 
 /**

@@ -6,7 +6,7 @@ import 'server-only';
  * Fehlt ein Kurs, wird nichts geschätzt – der Posten gilt als „ohne Kurs“.
  */
 
-import { closeAt, hourlyFactors, relChange } from '@/lib/domain/change';
+import { closeAt, hourlyFactors, rangeFactors, relChange } from '@/lib/domain/change';
 
 const UA = { 'user-agent': 'Mozilla/5.0 (Jarvis read-only)', accept: 'application/json' };
 const YAHOO = ['https://query1.finance.yahoo.com', 'https://query2.finance.yahoo.com'];
@@ -161,4 +161,27 @@ export async function platinumPrice(): Promise<MetalPrice | null> {
     }
   } catch { /* kein Preis */ }
   return null;
+}
+
+export type HistRange = '7d' | '1m' | '1y';
+export const RANGE_CFG: Record<HistRange, { span: number; points: number; yahoo: string; kraken: number; geckoDays: number; ttl: number }> = {
+  '7d': { span: 7 * 86_400, points: 57, yahoo: 'range=1mo&interval=60m', kraken: 60, geckoDays: 7, ttl: 900 },
+  '1m': { span: 30 * 86_400, points: 61, yahoo: 'range=3mo&interval=60m', kraken: 240, geckoDays: 30, ttl: 3600 },
+  '1y': { span: 365 * 86_400, points: 92, yahoo: 'range=1y&interval=1d', kraken: 1440, geckoDays: 365, ttl: 21_600 },
+};
+
+/** Verlauf eines Edelmetalls über 7 Tage / 1 Monat / 1 Jahr als Faktoren relativ zu jetzt (Yahoo-Futures). */
+export async function metalHistory(metal: Metal, range: HistRange): Promise<number[] | null> {
+  const c = RANGE_CFG[range];
+  return cached(`mh:${metal}:${range}`, c.ttl * 1000, async () => {
+    try {
+      const j = await yahoo<ChartResp & { chart?: { result?: Array<{ timestamp?: number[] }> } }>(`/v8/finance/chart/${encodeURIComponent(METAL_FUT[metal])}?${c.yahoo}`, c.ttl);
+      const res = j.chart?.result?.[0] as (NonNullable<NonNullable<ChartResp['chart']>['result']>[number] & { timestamp?: number[] }) | undefined;
+      const now = res?.meta?.regularMarketPrice;
+      const ts = res?.timestamp ?? [];
+      const closes = res?.indicators?.quote?.[0]?.close ?? [];
+      if (!now || !ts.length) return null;
+      return rangeFactors(ts, closes, now, Math.floor(Date.now() / 1000), c.span, c.points);
+    } catch (e) { console.error('[metall verlauf]', metal, range, (e as Error).message); return null; }
+  });
 }

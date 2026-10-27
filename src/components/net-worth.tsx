@@ -43,7 +43,11 @@ export function NetWorthBlock({ nw, compact = false }: { nw: NetWorth; compact?:
         ))}
       </dl>
 
-      <TrendGrid asOf={nw.crypto.asOf.toLocaleTimeString('de-DE', { timeZone: 'Asia/Dubai', hour: '2-digit', minute: '2-digit', second: '2-digit' })} items={[
+      <TrendGrid eurAed={nw.eurAed} holdings={{
+        coins: nw.crypto.coins.map((c) => ({ coin: c.coin, aed: c.aed })),
+        stableAed: Math.max(0, nw.crypto.aed - nw.crypto.coins.reduce((n, c) => n + c.aed, 0)),
+        gold: nw.gold.aed, silver: nw.silver.aed, platinum: nw.platinum.aed,
+      }} asOf={nw.crypto.asOf.toLocaleTimeString('de-DE', { timeZone: 'Asia/Dubai', hour: '2-digit', minute: '2-digit', second: '2-digit' })} items={[
         { key: 'krypto', label: 'Krypto', aed: nw.crypto.aed, change: nw.crypto.change, series: nw.crypto.series },
         { key: 'gold', label: 'Gold', aed: nw.gold.aed, change: nw.gold.change, series: nw.gold.series },
         { key: 'silber', label: 'Silber', aed: nw.silver.aed, change: nw.silver.change, series: nw.silver.series },

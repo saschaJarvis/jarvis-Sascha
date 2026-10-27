@@ -41,10 +41,17 @@ export function portfolioChange(items: Holding[]): { abs: number; pct: number | 
  * Fehlende Stunden übernehmen den vorherigen Wert. null = kein brauchbarer Verlauf.
  */
 export function hourlyFactors(ts: number[], closes: Array<number | null>, now: number, nowSec: number, points = 25): number[] | null {
-  if (!(now > 0) || !ts.length) return null;
+  return rangeFactors(ts, closes, now, nowSec, 86_400, points);
+}
+
+/** Wie hourlyFactors, aber für einen beliebigen Zeitraum (spanSec) mit gleichmäßig verteilten Punkten. */
+export function rangeFactors(ts: number[], closes: Array<number | null>, now: number, nowSec: number, spanSec: number, points: number): number[] | null {
+  if (!(now > 0) || !ts.length || points < 2) return null;
+  const step = spanSec / (points - 1);
+  const maxAge = Math.max(4 * 86_400, step * 2);
   const out: Array<number | null> = [];
   for (let i = 0; i < points; i++) {
-    const v = i === points - 1 ? now : closeAt(ts, closes, nowSec - (points - 1 - i) * 3600);
+    const v = i === points - 1 ? now : closeAt(ts, closes, Math.round(nowSec - (points - 1 - i) * step), maxAge);
     out.push(v && v > 0 ? v / now : null);
   }
   const firstOk = out.findIndex((x) => x != null);
