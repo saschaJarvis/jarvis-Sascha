@@ -140,6 +140,8 @@ export default async function BridgePage() {
       <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(0,1.35fr)_minmax(0,1fr)]">
         {/* ───────────── MITTE: Kern ───────────── */}
         <div className="order-1 grid min-w-0 grid-cols-1 content-start gap-4 xl:order-2">
+          {/* Kalender ganz oben – auf dem Handy hier, am großen Bildschirm oben links */}
+          <div className="xl:hidden"><WeekCalendar weeks={weeks} domainLabel={DOMAIN} hasSources={ext.sources.length > 0} /></div>
           {alerts.map((t) => (
             <Link key={t.id} href={`/aufgaben/${t.id}`} className={`flex items-center gap-3 border px-4 py-3 ${t.urgency >= 3 ? 'border-bad bg-bad-soft' : 'border-warn bg-warn-soft'}`}>
               <span aria-hidden="true" className={`text-2xl ${t.urgency >= 3 ? 'text-bad' : 'text-warn'}`}>▲</span>
@@ -208,7 +210,6 @@ export default async function BridgePage() {
             <p className="mx-auto max-w-2xl text-[1.05rem] leading-relaxed">{briefing}</p>
           </section>
 
-<WeekCalendar weeks={weeks} domainLabel={DOMAIN} hasSources={ext.sources.length > 0} />
 
           <nav aria-label="Schnellaktionen" className="flex flex-wrap justify-center gap-2">
             <Link href="/aufgaben/neu" className="btn btn-secondary min-h-10 text-[.7rem]">+ Neue Aufgabe</Link>
@@ -219,6 +220,7 @@ export default async function BridgePage() {
 
         {/* ───────────── LINKS ───────────── */}
         <div className="order-2 grid min-w-0 grid-cols-1 content-start gap-4 xl:order-1">
+          <div className="hidden xl:block"><WeekCalendar weeks={weeks} domainLabel={DOMAIN} hasSources={ext.sources.length > 0} /></div>
           <Panel n="01" title="Heute" aside={dateLong}>
             <div className="grid gap-3 sm:grid-cols-[1fr_1.1fr]">
               <ol className="relative hidden border-l border-line sm:block" aria-label="Tagesverlauf">
