@@ -8,6 +8,8 @@ import { AED_PER_USD } from '@/lib/domain/networth';
 import { getFx } from './ext';
 import { dispatchAlerts, queueAlert } from './notify';
 import { billAlertsDue, type Bill } from '@/lib/domain/bills';
+import { matchAlertsDue, matchTitle, previewText, resultLine } from '@/lib/domain/football';
+import { loadWerder } from './football';
 
 /**
  * Wächter (jede Minute über /api/cron/watch; Wallet-Abrufe sind 2–5 Min. zwischengespeichert, Kurse 10 s):
@@ -149,6 +151,10 @@ export async function runWatch(): Promise<{ users: number; alerts: number; sent:
     if (u.kinds?.bill === false) continue;
     try { alerts += await billAlerts(u.user_id, u.timezone); } catch (e) { console.error('[watch] bills', (e as Error).message); }
   }
+  const fans = users.filter((u) => u.kinds?.sport !== false);
+  if (fans.length) {
+    try { alerts += await werderAlerts(fans); } catch (e) { console.error('[watch] werder', (e as Error).message); }
+  }
   const d = await dispatchAlerts();
   return { users: users.length, alerts, ...d };
 }
@@ -206,6 +212,32 @@ async function billAlerts(userId: string, tz: string): Promise<number> {
         url: '/eingang', dedupKey: `${a.key}:${a.stage}`,
       });
       if (ok) n++;
+    }
+  }
+  return n;
+}
+
+/** Werder-Spiele: Vorschau am Spieltag (13 Uhr), Erinnerung 30 Min. vor Anstoß, Ergebnis nach Abpfiff. */
+async function werderAlerts(fans: { user_id: string; timezone: string }[]): Promise<number> {
+  const now = new Date();
+  // Nur abrufen, wenn heute/gestern ein Spiel ist – sonst reicht der lange Cache
+  let data = await loadWerder(now);
+  const near = data.matches.some((m) => Math.abs(+m.kickoff - +now) < 26 * 3600_000);
+  if (!near) return 0;
+  if (data.matches.some((m) => +now >= +m.kickoff && +now < +m.kickoff + 8 * 3600_000 && !m.finished)) data = await loadWerder(now, true);
+  let n = 0;
+  for (const u of fans) {
+    const tz = u.timezone || 'Asia/Dubai';
+    for (const m of data.matches) {
+      for (const a of matchAlertsDue(m, now, tz)) {
+        const vs = m.opponent.teamName;
+        const alert = a.stage === 'preview'
+          ? { title: `Heute: Werder ${m.werderHome ? 'gegen' : 'bei'} ${vs}`, body: previewText(m, { tz, table: data.tables[m.league], all: data.all }) }
+          : a.stage === 'kickoff'
+            ? { title: `Gleich Anpfiff: ${matchTitle(m)}`, body: `In 30 Minuten (${new Intl.DateTimeFormat('de-DE', { timeZone: tz, hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(m.kickoff)} Uhr Dubai). ${m.competition}${m.round ? `, ${m.round}` : ''}.` }
+            : { title: `Abpfiff: ${resultLine(m)}`, body: `${m.competition}${m.round ? `, ${m.round}` : ''}.` };
+        if (await queueAlert(u.user_id, { kind: 'sport', ...alert, url: '/kalender', dedupKey: a.key })) n++;
+      }
     }
   }
   return n;

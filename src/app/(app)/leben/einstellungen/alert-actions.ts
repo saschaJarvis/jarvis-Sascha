@@ -89,7 +89,7 @@ export async function disconnectTelegramAction(): Promise<void> {
 // ---------- Was gemeldet wird ----------
 export async function saveAlertKindsAction(_: AlertState, fd: FormData): Promise<AlertState> {
   const s = await requireUser();
-  const kinds = { outflow: fd.get('outflow') === 'on', inflow: fd.get('inflow') === 'on', price: fd.get('price') === 'on', statement: fd.get('statement') === 'on', other: fd.get('other') === 'on', bill: fd.get('bill') === 'on' };
+  const kinds = { outflow: fd.get('outflow') === 'on', inflow: fd.get('inflow') === 'on', price: fd.get('price') === 'on', statement: fd.get('statement') === 'on', other: fd.get('other') === 'on', bill: fd.get('bill') === 'on', sport: fd.get('sport') === 'on' };
   const opct = Number(String(fd.get('opct') ?? '5').replace(',', '.'));
   const pct = Number(String(fd.get('pct') ?? '10').replace(',', '.'));
   if (!Number.isFinite(pct) || pct < 1 || pct > 90) return { error: 'Schwelle bitte zwischen 1 und 90 %.' };

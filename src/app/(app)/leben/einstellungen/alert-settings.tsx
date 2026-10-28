@@ -10,7 +10,7 @@ function b64ToBytes(b64: string): Uint8Array {
 }
 
 export interface AlertConfig {
-  kinds: { outflow: boolean; inflow: boolean; price: boolean; statement: boolean; other: boolean; bill: boolean };
+  kinds: { outflow: boolean; inflow: boolean; price: boolean; statement: boolean; other: boolean; bill: boolean; sport: boolean };
   pct: number;
   otherPct: number;
   pushEnabled: boolean;
@@ -128,6 +128,7 @@ function KindsCard({ cfg }: { cfg: AlertConfig }) {
       <Box name="other" label="Aktien & Edelmetalle" hint="Wert deiner Aktien/ETFs, Gold, Silber und Platin seit heute früh – nur Kurse." />
       <label className="flex items-center gap-2 pl-6">ab <input name="opct" defaultValue={String(cfg.otherPct).replace('.', ',')} inputMode="decimal" className="field w-20 py-1" /> %</label>
       <Box name="statement" label="Kontoauszug ausgewertet" hint="Mit Auffälligkeiten aus dem Auszug." />
+      <Box name="sport" label="Werder-Spiele" hint="Vorschau am Spieltag um 13 Uhr, Erinnerung 30 Min. vor Anpfiff, Ergebnis nach Abpfiff." />
       <Box name="bill" label="Zahlungen fällig" hint="Am Fälligkeitstag (z. B. Miete am Monatsletzten) und am Tag danach, falls noch nicht abgehakt." />
       <Submit>Speichern</Submit>
       <ErrorNote error={state?.error} /><OkNote message={state?.ok} />

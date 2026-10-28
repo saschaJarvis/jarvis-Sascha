@@ -3,6 +3,7 @@ import type { Session } from './auth';
 import { db } from './repo';
 import { parseIcs, providerForHost } from '@/lib/ics';
 import type { CalExternal } from '@/lib/calendar';
+import { werderEvents } from './football';
 
 export interface SourceRow { id: string; name: string; provider: string; url: string; created_at: Date }
 export interface SourceStatus { id: string; name: string; provider: string; ok: boolean; count: number; error?: string; hint: string }
@@ -43,7 +44,9 @@ export async function loadExternalEvents(s: Session, from: Date, to: Date): Prom
       return { events: [], status: { id: src.id, name: src.name, provider: src.provider, ok: false, count: 0, error: (e as Error).message.slice(0, 160), hint: maskUrl(src.url) } };
     }
   }));
-  return { events: results.flatMap((r) => r.events), sources: results.map((r) => r.status) };
+  // Werder-Spielplan immer dabei (kein Link nötig)
+  const werder = fake() ? [] : await werderEvents(from, to).catch(() => [] as CalExternal[]);
+  return { events: [...results.flatMap((r) => r.events), ...werder], sources: results.map((r) => r.status) };
 }
 
 function fakeIcs(): string {
