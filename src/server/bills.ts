@@ -37,10 +37,10 @@ export async function ensureBillTasks(s: Session, now = new Date()): Promise<voi
              values (auth.uid(), $1, $2, 'finance', 'READY', $3, 2, 2, $4, $5, $6, 'gentle', 'verified', $7, $8)
              on conflict (user_id, idempotency_key) do update
                set title = excluded.title, why = excluded.why, money_at_risk_minor = excluded.money_at_risk_minor,
-                   money_currency = excluded.money_currency, next_step = excluded.next_step
+                   money_currency = excluded.money_currency, next_step = excluded.next_step, due_at = excluded.due_at
                where tasks.status not in ('CLOSED','CANCELLED')
-                 and (tasks.title, tasks.why, tasks.money_at_risk_minor, tasks.next_step)
-                     is distinct from (excluded.title, excluded.why, excluded.money_at_risk_minor, excluded.next_step)`,
+                 and (tasks.title, tasks.why, tasks.money_at_risk_minor, tasks.next_step, tasks.due_at)
+                     is distinct from (excluded.title, excluded.why, excluded.money_at_risk_minor, excluded.next_step, excluded.due_at)`,
             [`${b.title} – ${o.monthLabel}`, b.note, o.dueAt, b.amount_minor, b.currency,
               amount ? `${amount} bezahlen und hier abhaken` : 'Bezahlen und hier abhaken',
               JSON.stringify({ kind: 'recurring_bill', bill_id: b.id, month: o.month }), o.key]);
