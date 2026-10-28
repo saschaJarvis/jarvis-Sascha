@@ -7,6 +7,7 @@ import { friendlyDbError, withService } from '@/server/db';
 import { FOLDERS, FOLDER_LABEL, storeUpload, type Folder } from '@/server/storage';
 import { kickStatements } from '@/server/statements';
 import { kickMetalInvoices } from '@/server/metal-invoices';
+import { linkContractFromDocument, type ContractLink } from '@/server/contracts';
 import { AI_CONSENT, AI_CONSENT_TEXT, analyzeDocument, claudeAvailable, CLAUDE_MODEL, guessFolderFromName, type DocAnalysis } from '@/server/claude';
 
 export interface SortResult {
@@ -23,6 +24,7 @@ export interface SortResult {
   tasks?: number;
   byClaude?: boolean;
   duplicateOf?: string | null;
+  contract?: ContractLink | null;
 }
 export type SortState = { results?: SortResult[]; error?: string; note?: string } | undefined;
 
@@ -62,6 +64,7 @@ export async function sortUploadAction(_: SortState, fd: FormData): Promise<Sort
       }
 
       let taskCount = 0;
+      let contract: ContractLink | null = null;
       // Edelmetall-Käufe immer nach „Edelmetalle“ – dort liest Jarvis die Positionen fürs Gesamtvermögen aus
       if (a && a.folder !== 'metals' && /rechnung|lieferschein|kauf|auftrag|invoice/i.test(a.kind)
           && /gold|silber|silver|platin|philharmoniker|maple.?leaf|kr(ue|ü)gerrand|britannia|k(ae|ä)nguru|eagle|feinunze|\b1 ?oz\b|barren|m(ue|ü)nze/i.test(`${a.title} ${a.summary} ${a.issuer ?? ''}`)) {
@@ -86,6 +89,15 @@ export async function sortUploadAction(_: SortState, fd: FormData): Promise<Sort
             taskCount += r.length;
           }
         });
+        // Vertragsdokument → unter „Verträge“ anlegen bzw. bestehenden Vertrag ergänzen
+        if (an.contract) {
+          const facts = an.contract;
+          try {
+            contract = await db(s).run((q) => linkContractFromDocument(q, stored.documentId, facts));
+            await withService((q) => q(`select app.log_audit($1, 'jarvis', $2, 'contract', $3, $4)`,
+              [s.userId, contract!.created ? 'ai.contract_created' : 'ai.contract_updated', contract!.contractId, JSON.stringify({ document_id: stored.documentId })]));
+          } catch (e) { console.error('[contract] link', e); }
+        }
         await withService((q) => q(`select app.log_audit($1, 'jarvis', 'ai.document_sorted', 'document', $2, $3)`,
           [s.userId, stored.documentId, JSON.stringify({ model: CLAUDE_MODEL(), folder: an.folder, tasks: taskCount, confidence: an.confidence })]));
       }
@@ -96,7 +108,7 @@ export async function sortUploadAction(_: SortState, fd: FormData): Promise<Sort
         title: a?.title ?? name, summary: a?.summary ?? (aiError ? `Nach Dateiname einsortiert – ${aiError}` : !useClaude ? 'Nach Dateiname einsortiert.' : 'Dieser Dateityp wird nicht gelesen – nach Dateiname einsortiert.'),
         issuer: a?.issuer ?? null,
         amount: a?.amount != null ? `${a.amount.toLocaleString('de-DE', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${a.currency ?? ''}`.trim() : null,
-        tasks: taskCount, byClaude: !!a, duplicateOf: stored.duplicateOf,
+        tasks: taskCount, byClaude: !!a, duplicateOf: stored.duplicateOf, contract,
       });
     } catch (e) {
       results.push({ name, ok: false, error: e instanceof Error && /^(Datei|Claude)/.test(e.message) ? e.message : friendlyDbError(e) });

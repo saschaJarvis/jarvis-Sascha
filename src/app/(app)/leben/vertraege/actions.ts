@@ -61,7 +61,7 @@ export async function saveContractFactsAction(_: CState, fd: FormData): Promise<
     await db(s).run((q) => q(
       `update contracts set counterparty_name = $2, counterparty_address = $3, contract_number = $4,
          earliest_end_date = $5, earliest_end_certainty = case when $5::date is null then null else 'verified'::certainty end,
-         notice_period_text = $6, notice_period_certainty = case when $6 is null then null else 'verified'::certainty end
+         notice_period_text = $6, notice_period_certainty = case when $6 is null then null else 'verified'::certainty end, certainty = 'verified'
        where id = $1`, [id.data, v('counterparty_name'), v('counterparty_address'), v('contract_number'), end, v('notice_period_text')]));
   } catch (e) { return { error: friendlyDbError(e) }; }
   revalidatePath(back(id.data));

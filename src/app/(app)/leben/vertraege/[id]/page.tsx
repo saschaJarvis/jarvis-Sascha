@@ -11,10 +11,13 @@ import { ApproveForm, CloseForm, DraftEditor, DraftStarter, FactsForm, SendForm 
 
 interface C { id: string; name: string; category: string; counterparty_name: string | null; counterparty_address: string | null; contract_number: string | null;
   earliest_end_date: string | null; earliest_end_certainty: string | null; notice_period_text: string | null; notice_period_certainty: string | null;
-  amount_minor: string | null; currency: string | null; is_demo: boolean; certainty: string }
+  amount_minor: string | null; currency: string | null; is_demo: boolean; certainty: string;
+  start_date: string | null; billing_interval: string | null; deposit_minor: string | null; source_document_id: string | null }
 interface R { id: string; status: CancellationStatus; is_demo: boolean; draft_subject: string | null; draft_body: string | null; draft_sha256: string | null;
   dispatch_channel: string | null; checks: { items?: DraftCheck[]; missing?: string[]; blockers?: string[]; wetSignature?: boolean };
   closure_checklist: Record<string, ClosureItemState>; created_at: Date }
+
+const INTERVAL: Record<string, string> = { monthly: ' / Monat', quarterly: ' / Quartal', yearly: ' / Jahr', one_off: ' einmalig' };
 
 export default async function ContractPage({ params }: { params: Promise<{ id: string }> }) {
   const { id } = await params;
@@ -29,10 +32,16 @@ export default async function ContractPage({ params }: { params: Promise<{ id: s
       'select id, mode, channel, status, dispatched_at, body_sha256 from outbound_messages where cancellation_request_id = $1 order by created_at', [r.id]) : [];
     const approvals = r ? await q<{ id: string; is_simulated: boolean; created_at: Date; content_sha256: string; statement: string }>(
       `select id, is_simulated, created_at, content_sha256, statement from approvals where subject_type = 'cancellation' and subject_id = $1 order by created_at desc`, [r.id]) : [];
-    return { c, r, msgs, approvals };
+    const docs = await q<{ id: string; title: string; version_id: string | null; scan_status: string | null; created_at: Date }>(
+      `select d.id, d.title, d.created_at, v.id as version_id, v.scan_status::text as scan_status
+         from documents d
+         left join lateral (select * from document_versions where document_id = d.id order by version_no desc limit 1) v on true
+        where d.deleted_at is null and (d.id = $2::uuid or d.extracted->>'contract_id' = $1::text)
+        order by d.created_at`, [id, c.source_document_id]);
+    return { c, r, msgs, approvals, docs };
   });
   if (!data) notFound();
-  const { c, r, msgs, approvals } = data;
+  const { c, r, msgs, approvals, docs } = data;
   const tz = profile.timezone;
   const stepIndex = r ? CANCELLATION_STEPS_DE.findIndex((x) => x.status === r.status) : -1;
   const freshApproval = r && approvals.find((a) => a.content_sha256 === r.draft_sha256);
@@ -51,11 +60,28 @@ export default async function ContractPage({ params }: { params: Promise<{ id: s
           <Fact label="Vertragsnummer" value={c.contract_number} />
           <Fact label="Kündigungsfrist (laut Vertrag)" value={c.notice_period_text} c={c.notice_period_certainty} />
           <Fact label="Frühestes Ende" value={c.earliest_end_date ? new Date(c.earliest_end_date).toLocaleDateString('de-DE') : null} c={c.earliest_end_certainty} />
-          <Fact label="Miete/Betrag" value={c.amount_minor ? `${(Number(c.amount_minor) / 100).toLocaleString('de-DE', { minimumFractionDigits: 2 })} ${c.currency}` : null} />
+          <Fact label="Beginn" value={c.start_date ? new Date(c.start_date).toLocaleDateString('de-DE') : null} />
+          <Fact label="Miete/Betrag" value={c.amount_minor ? `${(Number(c.amount_minor) / 100).toLocaleString('de-DE', { minimumFractionDigits: 2 })} ${c.currency}${INTERVAL[c.billing_interval ?? ''] ?? ''}` : null} />
+          {c.deposit_minor && <Fact label="Kaution" value={`${(Number(c.deposit_minor) / 100).toLocaleString('de-DE', { minimumFractionDigits: 2 })} ${c.currency ?? ''}`} />}
+          {c.certainty === 'detected' && <p className="text-xs text-warn">Von Claude aus den Unterlagen gelesen – bitte einmal gegenprüfen.</p>}
           <details className="mt-1"><summary className="cursor-pointer text-sea">Angaben aus dem Vertrag eintragen</summary><FactsForm c={c} /></details>
           <p className="text-xs text-muted">Unbekanntes bleibt leer. Jarvis rät keine Fristen.</p>
         </div>
       </Section>
+
+      {docs.length > 0 && (
+        <Section title="Unterlagen">
+          <ul className="card grid gap-1.5 text-sm">
+            {docs.map((d) => (
+              <li key={d.id}>
+                {d.version_id && d.scan_status === 'clean'
+                  ? <a href={`/api/datei/${d.version_id}`} className="underline">{d.title}</a>
+                  : <span>{d.title}</span>}
+              </li>
+            ))}
+          </ul>
+        </Section>
+      )}
 
       <Section title="Kündigung" aside={r ? <span className="text-sm text-muted">Schritt {Math.max(1, stepIndex + 1)} von {CANCELLATION_STEPS_DE.length}</span> : null}>
         {r && (

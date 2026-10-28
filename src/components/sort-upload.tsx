@@ -66,6 +66,7 @@ export function SortUpload({ claude, consented }: { claude: boolean; consented: 
                     {r.byClaude && <span className="text-sea">gelesen von Claude</span>}
                     {!!r.tasks && <Link href="/eingang" className="text-warn underline">{r.tasks} Aufgabe{r.tasks > 1 ? 'n' : ''} im Eingang prüfen</Link>}
                     {r.duplicateOf && <span className="text-warn">schon vorhanden als „{r.duplicateOf}“</span>}
+                    {r.contract && <Link href={`/leben/vertraege/${r.contract.contractId}`} className="text-sea underline">{r.contract.created ? 'Neuer Vertrag' : 'Vertrag ergänzt'}: {r.contract.name}</Link>}
                   </p>
                   <form action={moveDocumentAction} className="flex items-center gap-2">
                     <input type="hidden" name="id" value={r.documentId} />
