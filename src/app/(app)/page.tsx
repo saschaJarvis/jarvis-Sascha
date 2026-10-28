@@ -47,7 +47,7 @@ export default async function BridgePage() {
   await kickMetalInvoices(s).catch((e) => console.error('[metal-invoice] kick', e));
   const [profile, open, done, closedCal, extra, fx, ext, nw] = await Promise.all([
     db(s).profile(), db(s).openTasks(), db(s).recentlyDone(),
-    db(s).doneInRange(new Date(Date.now() - 8 * 86_400_000), new Date(Date.now() + 9 * 7 * 86_400_000)),
+    db(s).doneInRange(new Date(Date.now() - 29 * 86_400_000), new Date(Date.now() + 31 * 7 * 86_400_000)),
     db(s).run(async (q) => {
       const [stats] = await q<Stats>(`select
         (select count(*)::int from contracts where deleted_at is null and not is_demo) contracts,
@@ -69,7 +69,7 @@ export default async function BridgePage() {
       return { stats, cancellations, property: property[0], log };
     }),
     getFx(),
-    loadExternalEvents(s, new Date(Date.now() - 8 * 86_400_000), new Date(Date.now() + 9 * 7 * 86_400_000)),
+    loadExternalEvents(s, new Date(Date.now() - 29 * 86_400_000), new Date(Date.now() + 31 * 7 * 86_400_000)),
     loadNetWorth(s),
   ]);
   const weather = await getWeather(profile.timezone);
@@ -116,7 +116,7 @@ export default async function BridgePage() {
     main ? `Mein Vorschlag für jetzt: „${main.title}“.` : 'Gerade drängt nichts – guter Moment, Dinge aus dem Kopf zu notieren.',
   ].filter(Boolean).join(' ');
 
-  const weeks = buildCalendar([...open, ...closedCal], tz, now, 1, 8, ext.events);
+  const weeks = buildCalendar([...open, ...closedCal], tz, now, 4, 30, ext.events);
   const hours = Array.from({ length: 16 }, (_, i) => i + 7); // 07–22 Uhr
 
   const domainCounts = Object.entries(open.reduce<Record<string, number>>((m, t) => ((m[t.domain] = (m[t.domain] ?? 0) + 1), m), {}))

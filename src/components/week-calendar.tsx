@@ -25,6 +25,19 @@ export function WeekCalendar({ weeks, domainLabel, hasSources = true }: { weeks:
     const t = weeks[next].days.findIndex((d) => d.isToday);
     setDi(t >= 0 ? t : 0);
   };
+  /** Zu einem Datum springen (Schlüssel = Tage seit 1970, wie CalDay.key) */
+  const goDate = (ymd: string) => {
+    const key = Date.parse(ymd) / 86_400_000;
+    if (!Number.isFinite(key)) return;
+    const w = weeks.findIndex((x) => x.days.some((d) => d.key === key));
+    if (w < 0) return;
+    setWi(w);
+    setDi(weeks[w].days.findIndex((d) => d.key === key));
+  };
+  const goToday = () => { setWi(startIdx); const t = weeks[startIdx].days.findIndex((d) => d.isToday); setDi(t >= 0 ? t : 0); };
+  const toYmd = (k: number) => new Date(k * 86_400_000).toISOString().slice(0, 10);
+  const minDay = toYmd(weeks[0].days[0].key), maxDay = toYmd(weeks[weeks.length - 1].days[6].key);
+  const isToday = wi === startIdx && week.days[di]?.isToday;
   const onKey = (e: React.KeyboardEvent, i: number) => {
     const n = e.key === 'ArrowRight' ? i + 1 : e.key === 'ArrowLeft' ? i - 1 : e.key === 'Home' ? 0 : e.key === 'End' ? 6 : -1;
     if (n < 0 || n > 6) return;
@@ -35,14 +48,28 @@ export function WeekCalendar({ weeks, domainLabel, hasSources = true }: { weeks:
 
   return (
     <section aria-label="Wochenkalender" className="card grid gap-3">
-      <header className="flex items-center justify-between gap-2">
-        <button type="button" onClick={() => goWeek(-1)} disabled={wi === 0} className="btn btn-secondary min-h-9 px-3 text-[.7rem]" aria-label="Vorige Woche">‹</button>
+      <header className="flex items-center justify-between gap-1.5">
+        <span className="flex gap-1">
+          <button type="button" onClick={() => goWeek(-4)} disabled={wi === 0} className="btn btn-secondary min-h-9 px-2.5 text-[.7rem]" aria-label="4 Wochen zurück">«</button>
+          <button type="button" onClick={() => goWeek(-1)} disabled={wi === 0} className="btn btn-secondary min-h-9 px-3 text-[.7rem]" aria-label="Vorige Woche">‹</button>
+        </span>
         <div className="text-center">
           <p className="eyebrow">{week.offset === 0 ? 'Diese Woche' : week.offset === 1 ? 'Nächste Woche' : week.offset === -1 ? 'Letzte Woche' : `In ${week.offset} Wochen`}</p>
           <p className="mono text-[.68rem] uppercase tracking-widest text-muted">{week.label}</p>
         </div>
-        <button type="button" onClick={() => goWeek(1)} disabled={wi === weeks.length - 1} className="btn btn-secondary min-h-9 px-3 text-[.7rem]" aria-label="Nächste Woche">›</button>
+        <span className="flex gap-1">
+          <button type="button" onClick={() => goWeek(1)} disabled={wi === weeks.length - 1} className="btn btn-secondary min-h-9 px-3 text-[.7rem]" aria-label="Nächste Woche">›</button>
+          <button type="button" onClick={() => goWeek(4)} disabled={wi === weeks.length - 1} className="btn btn-secondary min-h-9 px-2.5 text-[.7rem]" aria-label="4 Wochen vor">»</button>
+        </span>
       </header>
+      <div className="flex items-center justify-between gap-2">
+        <label className="flex min-w-0 items-center gap-2 text-[.7rem] text-muted">
+          <span className="mono uppercase tracking-wider">Springen zu</span>
+          <input type="date" className="field min-h-9 min-w-0 py-1 text-sm" min={minDay} max={maxDay}
+            value={toYmd(week.days[di]?.key ?? week.days[0].key)} onChange={(e) => goDate(e.target.value)} aria-label="Datum wählen" />
+        </label>
+        {!isToday && <button type="button" onClick={goToday} className="btn btn-secondary min-h-9 shrink-0 px-3 text-[.7rem]">Heute</button>}
+      </div>
 
       <div role="tablist" aria-label="Wochentage" className="grid grid-cols-7 gap-1">
         {week.days.map((d, i) => {

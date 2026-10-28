@@ -16,12 +16,12 @@ export default async function CalendarPage({ searchParams }: { searchParams: Pro
   const { verbinden } = await searchParams;
   const now = new Date();
   await ensureBillTasks(s, now);
-  const from = new Date(now.getTime() - 15 * 86_400_000), to = new Date(now.getTime() + 13 * 7 * 86_400_000);
+  const from = new Date(now.getTime() - 29 * 86_400_000), to = new Date(now.getTime() + 31 * 7 * 86_400_000);
   const [profile, open, closed, ext] = await Promise.all([
     db(s).profile(), db(s).openTasks(), db(s).doneInRange(from, to),
-    loadExternalEvents(s, new Date(now.getTime() - 15 * 86_400_000), new Date(now.getTime() + 13 * 7 * 86_400_000)),
+    loadExternalEvents(s, new Date(now.getTime() - 29 * 86_400_000), new Date(now.getTime() + 31 * 7 * 86_400_000)),
   ]);
-  const weeks = buildCalendar([...open, ...closed], profile.timezone, now, 2, 12, ext.events);
+  const weeks = buildCalendar([...open, ...closed], profile.timezone, now, 4, 30, ext.events);
   const none = ext.sources.length === 0;
 
   return (
