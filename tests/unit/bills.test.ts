@@ -22,3 +22,16 @@ test('Fälligkeiten: aktueller + nächster Monat, über den Jahreswechsel, stabi
 test('Fester Tag 30 wird im Februar auf das Monatsende begrenzt', () => {
   assert.equal(billDue({ day_of_month: 28, remind_hour: 9 }, 2027, 2, 'Asia/Dubai').toISOString(), '2027-02-28T05:00:00.000Z');
 });
+
+test('Telegram-Erinnerung: am 31.10. ab 9 Uhr, Nachfassen am 1.11. ab 9 Uhr (Dubai), sonst nichts', async () => {
+  const { billAlertsDue } = await import('../../src/lib/domain/bills');
+  const b = { id: 'b1', title: 'Büro', day_of_month: -1, remind_hour: 9 };
+  assert.deepEqual(billAlertsDue(b, new Date('2026-10-31T04:59:00Z'), 'Asia/Dubai'), []);
+  const due = billAlertsDue(b, new Date('2026-10-31T05:00:00Z'), 'Asia/Dubai');
+  assert.deepEqual(due.map((x) => [x.key, x.stage]), [['bill:b1:2026-10', 'due']]);
+  const fu = billAlertsDue(b, new Date('2026-11-01T05:30:00Z'), 'Asia/Dubai');
+  assert.deepEqual(fu.map((x) => [x.key, x.stage, x.monthLabel]), [['bill:b1:2026-10', 'followup', 'Oktober 2026']]);
+  assert.deepEqual(billAlertsDue(b, new Date('2026-11-03T05:00:00Z'), 'Asia/Dubai'), []);
+  // Jahreswechsel: Nachfassen für Dezember am 1. Januar
+  assert.equal(billAlertsDue(b, new Date('2027-01-01T06:00:00Z'), 'Asia/Dubai')[0]?.month, '2026-12');
+});

@@ -14,7 +14,7 @@ function vapid() {
   webpush.setVapidDetails(process.env.VAPID_SUBJECT || 'mailto:jarvis@example.invalid', process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY!, process.env.VAPID_PRIVATE_KEY!);
 }
 
-export interface AlertInput { kind: 'outflow' | 'inflow' | 'price' | 'statement' | 'test'; severity?: 'info' | 'warn' | 'critical'; title: string; body: string; url?: string; dedupKey: string }
+export interface AlertInput { kind: 'outflow' | 'inflow' | 'price' | 'statement' | 'bill' | 'test'; severity?: 'info' | 'warn' | 'critical'; title: string; body: string; url?: string; dedupKey: string }
 
 /** Warnung anlegen (einmalig je dedupKey). Ruhezeiten: nicht-kritische Warnungen warten bis zum Ende. */
 export async function queueAlert(userId: string, a: AlertInput): Promise<boolean> {

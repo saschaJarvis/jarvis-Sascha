@@ -26,3 +26,29 @@ export function billOccurrences(bill: Bill, now: Date, tz: string, monthsAhead =
   }
   return out;
 }
+
+export interface BillAlert { key: string; month: string; monthLabel: string; dueAt: Date; stage: 'due' | 'followup' }
+
+const H = 3600_000;
+/**
+ * Welche Telegram/Push-Erinnerungen sind jetzt fällig? Am Fälligkeitstag zur Erinnerungszeit („due“) und,
+ * falls noch nicht abgehakt, 24 h später nochmal („followup“). Betrachtet Vormonat + aktuellen Monat,
+ * damit die Nachfass-Nachricht am Monatsersten nicht verloren geht. Fenster begrenzt, damit nach
+ * einer Pause keine alten Erinnerungen nachkommen.
+ */
+export function billAlertsDue(bill: Bill, now: Date, tz: string): BillAlert[] {
+  const p = toLocalParts(now, tz);
+  const out: BillAlert[] = [];
+  for (const back of [1, 0]) {
+    const idx = p.month - 1 - back;
+    const y = p.year + Math.floor(idx / 12);
+    const m = ((idx % 12) + 12) % 12 + 1;
+    const month = `${y}-${String(m).padStart(2, '0')}`;
+    const dueAt = billDue(bill, y, m, tz);
+    const since = now.getTime() - dueAt.getTime();
+    const base = { key: `bill:${bill.id}:${month}`, month, monthLabel: `${MONTHS[m - 1]} ${y}`, dueAt };
+    if (since >= 0 && since < 20 * H) out.push({ ...base, stage: 'due' });
+    else if (since >= 24 * H && since < 44 * H) out.push({ ...base, stage: 'followup' });
+  }
+  return out;
+}

@@ -42,7 +42,7 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
     tokens: tokens.map((t) => ({ id: t.id, label: t.label, created: dfmt(t.created_at), lastUsed: t.last_used_at ? dfmt(t.last_used_at) : null })),
     baseUrl: `https://${h.get('x-forwarded-host') ?? h.get('host') ?? 'jarvis-sascha.vercel.app'}`,
   };
-  const kinds = { outflow: true, inflow: true, price: true, statement: true, other: true, ...(al?.kinds ?? {}) };
+  const kinds = { outflow: true, inflow: true, price: true, statement: true, other: true, bill: true, ...(al?.kinds ?? {}) };
 
   return (
     <div>

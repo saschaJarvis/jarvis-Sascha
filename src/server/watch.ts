@@ -7,6 +7,7 @@ import { coinPrices, MANUAL_SYMBOLS, type Coin, type PriceCoin } from './wallets
 import { AED_PER_USD } from '@/lib/domain/networth';
 import { getFx } from './ext';
 import { dispatchAlerts, queueAlert } from './notify';
+import { billAlertsDue, type Bill } from '@/lib/domain/bills';
 
 /**
  * Wächter (jede Minute über /api/cron/watch; Wallet-Abrufe sind 2–5 Min. zwischengespeichert, Kurse 10 s):
@@ -30,7 +31,7 @@ const nf = (n: number, d = 2) => n.toLocaleString('de-DE', { minimumFractionDigi
 const dec = (sym: string) => (['BTC', 'ZEC', 'LTC', 'ETH'].includes(sym) ? 6 : 2);
 
 export async function runWatch(): Promise<{ users: number; alerts: number; sent: number; failed: number }> {
-  const users = await withService((q) => q<{ user_id: string; kinds: Record<string, boolean>; price_threshold_pct: string; other_threshold_pct: string; price_anchor: Record<string, number> | null; price_anchor_day: string | null; timezone: string }>(
+  const users = await withService((q) => q<{ user_id: string; kinds: Record<string, boolean> | null; price_threshold_pct: string; other_threshold_pct: string; price_anchor: Record<string, number> | null; price_anchor_day: string | null; timezone: string }>(
     `select s.user_id, s.kinds, s.price_threshold_pct::text, s.other_threshold_pct::text, s.price_anchor, s.price_anchor_day::text, p.timezone
        from alert_settings s join profiles p on p.id = s.user_id
       where (s.push_enabled or s.telegram_chat_id is not null) and not coalesce(p.kill_switch, false)`));
@@ -144,6 +145,10 @@ export async function runWatch(): Promise<{ users: number; alerts: number; sent:
       }
     }
   }
+  for (const u of users) {
+    if (u.kinds?.bill === false) continue;
+    try { alerts += await billAlerts(u.user_id, u.timezone); } catch (e) { console.error('[watch] bills', (e as Error).message); }
+  }
   const d = await dispatchAlerts();
   return { users: users.length, alerts, ...d };
 }
@@ -174,4 +179,34 @@ async function otherHoldings(userId: string, eurAed: number | null): Promise<Arr
     out.push({ key: `stock:${sym}`, price: q.price, eur: qty * q.price * fx });
   }
   return out;
+}
+
+const eur = (minor: string | null, cur: string | null) =>
+  minor && cur ? `${(Number(minor) / 100).toLocaleString('de-DE', { minimumFractionDigits: 0, maximumFractionDigits: 2 })} ${cur === 'EUR' ? '€' : cur}` : null;
+
+/** Fällige Zahlungen → Telegram/Push. Nicht mehr, wenn die Monatsaufgabe abgehakt ist oder der Vertrag schon zu Ende ist. */
+async function billAlerts(userId: string, tz: string): Promise<number> {
+  const bills = await withService((q) => q<Bill & { amount_minor: string | null; currency: string | null; ends_on: string | null }>(
+    `select b.id, b.title, b.day_of_month, b.remind_hour, b.amount_minor, b.currency, c.earliest_end_date::text as ends_on
+       from recurring_bills b left join contracts c on c.id = b.contract_id and c.deleted_at is null
+      where b.user_id = $1 and b.active and b.deleted_at is null`, [userId]));
+  const now = new Date();
+  let n = 0;
+  for (const b of bills) {
+    for (const a of billAlertsDue(b, now, tz || 'Asia/Dubai')) {
+      const dueLocal = new Intl.DateTimeFormat('en-CA', { timeZone: tz || 'Asia/Dubai', year: 'numeric', month: '2-digit', day: '2-digit' }).format(a.dueAt);
+      if (b.ends_on && dueLocal >= b.ends_on) continue;
+      const done = await withService((q) => q(`select 1 from tasks where user_id = $1 and idempotency_key = $2 and status in ('CLOSED','CANCELLED') limit 1`, [userId, a.key]));
+      if (done.length) continue;
+      const amount = eur(b.amount_minor, b.currency);
+      const ok = await queueAlert(userId, {
+        kind: 'bill', severity: a.stage === 'followup' ? 'warn' : 'info',
+        title: a.stage === 'followup' ? `Noch offen: ${b.title}` : `Heute zahlen: ${b.title}`,
+        body: `${amount ? `${amount} – ` : ''}${a.monthLabel}.${a.stage === 'followup' ? ' Seit gestern fällig.' : ''} Nach dem Überweisen in Jarvis abhaken, dann kommt keine weitere Erinnerung.`,
+        url: '/eingang', dedupKey: `${a.key}:${a.stage}`,
+      });
+      if (ok) n++;
+    }
+  }
+  return n;
 }
