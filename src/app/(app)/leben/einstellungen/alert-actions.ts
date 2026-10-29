@@ -6,7 +6,7 @@ import { z } from 'zod';
 import { requireUser } from '@/server/auth';
 import { db } from '@/server/repo';
 import { friendlyDbError } from '@/server/db';
-import { dispatchAlerts, queueAlert } from '@/server/notify';
+import { dispatchAlerts, placeCall, queueAlert } from '@/server/notify';
 
 export type AlertState = { ok?: string; error?: string; code?: string; bot?: string } | undefined;
 
@@ -89,7 +89,7 @@ export async function disconnectTelegramAction(): Promise<void> {
 // ---------- Was gemeldet wird ----------
 export async function saveAlertKindsAction(_: AlertState, fd: FormData): Promise<AlertState> {
   const s = await requireUser();
-  const kinds = { outflow: fd.get('outflow') === 'on', inflow: fd.get('inflow') === 'on', price: fd.get('price') === 'on', statement: fd.get('statement') === 'on', other: fd.get('other') === 'on', bill: fd.get('bill') === 'on', sport: fd.get('sport') === 'on' };
+  const kinds = { outflow: fd.get('outflow') === 'on', inflow: fd.get('inflow') === 'on', price: fd.get('price') === 'on', statement: fd.get('statement') === 'on', other: fd.get('other') === 'on', bill: fd.get('bill') === 'on', sport: fd.get('sport') === 'on', event: fd.get('event') === 'on' };
   const opct = Number(String(fd.get('opct') ?? '5').replace(',', '.'));
   const pct = Number(String(fd.get('pct') ?? '10').replace(',', '.'));
   if (!Number.isFinite(pct) || pct < 1 || pct > 90) return { error: 'Schwelle bitte zwischen 1 und 90 %.' };
@@ -107,4 +107,29 @@ export async function sendTestAlertAction(): Promise<AlertState> {
   await queueAlert(s.userId, { kind: 'test', severity: 'critical', title: 'Test von Jarvis', body: 'So sehen Warnungen aus. Abflüsse kommen sofort – auch nachts.', url: '/leben/einstellungen', dedupKey: `test:${Date.now()}` });
   const r = await dispatchAlerts(s.userId);
   return r.sent ? { ok: 'Testnachricht verschickt.' } : { error: 'Keine Nachricht zugestellt – ist ein Kanal eingerichtet?' };
+}
+
+// ---------- Anruf (Telegram-Anruf über CallMeBot) ----------
+export async function saveCallUserAction(_: AlertState, fd: FormData): Promise<AlertState> {
+  const s = await requireUser();
+  const raw = String(fd.get('call_user') ?? '').trim();
+  const user = raw ? `@${raw.replace(/^@+/, '')}` : null;
+  if (user && !/^@[A-Za-z0-9_]{5,32}$/.test(user)) return { error: 'Bitte deinen Telegram-Benutzernamen eingeben, z. B. @sascha_lueck (Telegram → Einstellungen → Benutzername).' };
+  const lead = Number(String(fd.get('lead') ?? '60'));
+  if (!Number.isInteger(lead) || lead < 5 || lead > 1440) return { error: 'Vorlauf bitte zwischen 5 und 1440 Minuten.' };
+  await db(s).run(async (q) => {
+    await q(ensureRow);
+    await q('update alert_settings set call_user = $1, event_lead_min = $2 where user_id = auth.uid()', [user, lead]);
+  });
+  revalidatePath('/leben/einstellungen');
+  return { ok: user ? `Gespeichert. Jarvis ruft ${user} an.` : 'Anrufe sind aus.' };
+}
+
+export async function testCallAction(): Promise<AlertState> {
+  const s = await requireUser();
+  const [cfg] = await db(s).run((q) => q<{ call_user: string | null }>('select call_user from alert_settings where user_id = auth.uid()'));
+  if (!cfg?.call_user) return { error: 'Erst den Telegram-Benutzernamen speichern.' };
+  try { await placeCall(cfg.call_user, 'Hallo Sascha, hier ist Jarvis. Das ist ein Testanruf für deine Termin-Erinnerungen.'); }
+  catch (e) { return { error: `${(e as Error).message}. Hast du @CallMeBot_txtbot in Telegram mit /start freigeschaltet?` }; }
+  return { ok: 'Anruf ist unterwegs – Telegram sollte gleich klingeln.' };
 }

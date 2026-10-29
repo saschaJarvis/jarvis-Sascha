@@ -1,6 +1,7 @@
 import 'server-only';
 import type { Session } from './auth';
 import { db } from './repo';
+import { withService } from './db';
 import { parseIcs, providerForHost } from '@/lib/ics';
 import type { CalExternal } from '@/lib/calendar';
 import { werderEvents } from './football';
@@ -56,4 +57,15 @@ function fakeIcs(): string {
     'BEGIN:VEVENT', 'UID:fake-1', `DTSTART:${ymd(1)}T060000Z`, `DTEND:${ymd(1)}T070000Z`, 'SUMMARY:Testtermin aus dem iPhone', 'LOCATION:Dubai Marina', 'END:VEVENT',
     'BEGIN:VEVENT', 'UID:fake-2', `DTSTART;VALUE=DATE:${ymd(0)}`, `DTEND;VALUE=DATE:${ymd(1)}`, 'SUMMARY:Ganztägig heute', 'END:VEVENT',
     'END:VCALENDAR'].join('\r\n');
+}
+
+/** Termine eines Nutzers für den Wächter (ohne Sitzung, nur serverseitig). Fehlerhafte Kalender werden übersprungen. */
+export async function eventsForUser(userId: string, from: Date, to: Date): Promise<CalExternal[]> {
+  const rows = await withService((q) => q<{ name: string; url: string; provider: string }>(
+    'select name, url, provider from calendar_sources where user_id = $1 and deleted_at is null', [userId]));
+  const lists = await Promise.all(rows.map(async (src) => {
+    try { return parseIcs(await fetchIcs(src.url), from, to).map((e) => ({ ...e, source: src.name })); }
+    catch (e) { console.error('[erinnerung]', src.provider, (e as Error).message); return []; }
+  }));
+  return lists.flat();
 }

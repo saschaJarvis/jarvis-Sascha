@@ -10,6 +10,8 @@ import { dispatchAlerts, queueAlert } from './notify';
 import { billAlertsDue, type Bill } from '@/lib/domain/bills';
 import { matchAlertsDue, matchTitle, previewText, resultLine } from '@/lib/domain/football';
 import { loadWerder } from './football';
+import { eventsForUser } from './calendars';
+import { eventRemindersDue, reminderTexts } from '@/lib/domain/event-reminders';
 
 /**
  * Wächter (jede Minute über /api/cron/watch; Wallet-Abrufe sind 2–5 Min. zwischengespeichert, Kurse 10 s):
@@ -33,10 +35,10 @@ const nf = (n: number, d = 2) => n.toLocaleString('de-DE', { minimumFractionDigi
 const dec = (sym: string) => (['BTC', 'ZEC', 'LTC', 'ETH'].includes(sym) ? 6 : 2);
 
 export async function runWatch(): Promise<{ users: number; alerts: number; sent: number; failed: number }> {
-  const users = await withService((q) => q<{ user_id: string; kinds: Record<string, boolean> | null; price_threshold_pct: string; other_threshold_pct: string; price_anchor: Record<string, number> | null; price_anchor_day: string | null; timezone: string }>(
-    `select s.user_id, s.kinds, s.price_threshold_pct::text, s.other_threshold_pct::text, s.price_anchor, s.price_anchor_day::text, p.timezone
+  const users = await withService((q) => q<{ user_id: string; kinds: Record<string, boolean> | null; price_threshold_pct: string; other_threshold_pct: string; price_anchor: Record<string, number> | null; price_anchor_day: string | null; timezone: string; event_lead_min: number }>(
+    `select s.user_id, s.kinds, s.event_lead_min, s.price_threshold_pct::text, s.other_threshold_pct::text, s.price_anchor, s.price_anchor_day::text, p.timezone
        from alert_settings s join profiles p on p.id = s.user_id
-      where (s.push_enabled or s.telegram_chat_id is not null) and not coalesce(p.kill_switch, false)`));
+      where (s.push_enabled or s.telegram_chat_id is not null or s.call_user is not null) and not coalesce(p.kill_switch, false)`));
   const fx = await getFx();
   const eurAed = fx?.eurAed ?? null;
   let alerts = 0;
@@ -155,8 +157,24 @@ export async function runWatch(): Promise<{ users: number; alerts: number; sent:
   if (fans.length) {
     try { alerts += await werderAlerts(fans); } catch (e) { console.error('[watch] werder', (e as Error).message); }
   }
+  for (const u of users) {
+    if (u.kinds?.event === false) continue;
+    try { alerts += await eventAlerts(u.user_id, u.timezone, u.event_lead_min ?? 60); } catch (e) { console.error('[watch] termine', (e as Error).message); }
+  }
   const d = await dispatchAlerts();
   return { users: users.length, alerts, ...d };
+}
+
+/** Termine aus den verbundenen Kalendern: Telegram-Nachricht + Anruf, standardmäßig 1 Stunde vorher – auch in der Ruhezeit. */
+async function eventAlerts(userId: string, tz: string, leadMin: number): Promise<number> {
+  const now = new Date();
+  const events = await eventsForUser(userId, new Date(now.getTime() - 3600_000), new Date(now.getTime() + (leadMin + 5) * 60_000));
+  let n = 0;
+  for (const r of eventRemindersDue(events, now, leadMin)) {
+    const t = reminderTexts(r, tz || 'Asia/Dubai');
+    if (await queueAlert(userId, { kind: 'event', severity: 'info', ignoreQuiet: true, title: t.title, body: t.body, callText: t.call, url: '/kalender', dedupKey: r.key })) n++;
+  }
+  return n;
 }
 
 /** Aktien/ETFs, Gold und Platin eines Nutzers: Anker-Schlüssel, aktueller Kurs (Originalwährung) und Wert in EUR. */

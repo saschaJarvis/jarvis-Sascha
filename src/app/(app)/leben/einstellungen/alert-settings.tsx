@@ -1,6 +1,6 @@
 'use client';
 import { useActionState, useEffect, useState, useTransition } from 'react';
-import { connectTelegramAction, disablePushAction, disconnectTelegramAction, saveAlertKindsAction, savePushSubscriptionAction, sendTestAlertAction, type AlertState } from './alert-actions';
+import { connectTelegramAction, disablePushAction, disconnectTelegramAction, saveAlertKindsAction, saveCallUserAction, savePushSubscriptionAction, sendTestAlertAction, testCallAction, type AlertState } from './alert-actions';
 import { ErrorNote, OkNote, Submit } from '@/components/form';
 
 function b64ToBytes(b64: string): Uint8Array {
@@ -10,7 +10,7 @@ function b64ToBytes(b64: string): Uint8Array {
 }
 
 export interface AlertConfig {
-  kinds: { outflow: boolean; inflow: boolean; price: boolean; statement: boolean; other: boolean; bill: boolean; sport: boolean };
+  kinds: { outflow: boolean; inflow: boolean; price: boolean; statement: boolean; other: boolean; bill: boolean; sport: boolean; event: boolean };
   pct: number;
   otherPct: number;
   pushEnabled: boolean;
@@ -18,6 +18,8 @@ export interface AlertConfig {
   telegramBot: string | null;
   telegramLinked: boolean;
   telegramCode: string | null;
+  callUser: string | null;
+  eventLeadMin: number;
   vapidKey: string | null;
 }
 
@@ -26,6 +28,7 @@ export function AlertSettings({ cfg }: { cfg: AlertConfig }) {
     <div className="grid gap-3">
       <PushCard cfg={cfg} />
       <TelegramCard cfg={cfg} />
+      <CallCard cfg={cfg} />
       <KindsCard cfg={cfg} />
       <TestCard enabled={cfg.pushEnabled || cfg.telegramLinked} />
     </div>
@@ -129,11 +132,40 @@ function KindsCard({ cfg }: { cfg: AlertConfig }) {
       <label className="flex items-center gap-2 pl-6">ab <input name="opct" defaultValue={String(cfg.otherPct).replace('.', ',')} inputMode="decimal" className="field w-20 py-1" /> %</label>
       <Box name="statement" label="Kontoauszug ausgewertet" hint="Mit Auffälligkeiten aus dem Auszug." />
       <Box name="sport" label="Werder-Spiele" hint="Vorschau am Spieltag um 13 Uhr, Erinnerung 30 Min. vor Anpfiff, Ergebnis nach Abpfiff." />
+      <Box name="event" label="📅 Termine" hint={`${cfg.eventLeadMin} Min. vor jedem Termin aus deinen Kalendern: Telegram-Nachricht und Anruf – auch nachts. Ganztägige Termine nicht.`} />
       <Box name="bill" label="Zahlungen fällig" hint="Am Fälligkeitstag (z. B. Miete am Monatsletzten) und am Tag danach, falls noch nicht abgehakt." />
       <Submit>Speichern</Submit>
       <ErrorNote error={state?.error} /><OkNote message={state?.ok} />
       <p className="text-xs text-muted">Jarvis prüft alle 5 Minuten. Außer Abflüssen kommt nichts während deiner Ruhezeit (oben einstellbar) – das wird danach nachgeholt.</p>
     </form>
+  );
+}
+
+function CallCard({ cfg }: { cfg: AlertConfig }) {
+  const [state, action] = useActionState(saveCallUserAction, undefined);
+  const [test, setTest] = useState<AlertState>();
+  const [pending, start] = useTransition();
+  return (
+    <div className="card grid gap-2">
+      <p className="font-semibold">📞 Anruf bei Terminen</p>
+      <p className="text-sm text-muted">Jarvis ruft dich in Telegram an und liest den Termin vor (über den kostenlosen Dienst CallMeBot).</p>
+      <ol className="list-decimal pl-5 text-sm text-muted">
+        <li>In Telegram <b>@CallMeBot_txtbot</b> öffnen und <b>/start</b> senden (einmalig).</li>
+        <li>Telegram → Einstellungen → Datenschutz → Anrufe: nicht auf „Niemand“ stellen.</li>
+        <li>Deinen Telegram-Benutzernamen hier eintragen.</li>
+      </ol>
+      <form action={action} className="grid gap-2">
+        <input name="call_user" defaultValue={cfg.callUser ?? ''} autoComplete="off" spellCheck={false} className="field mono text-sm" placeholder="@dein_name (leer = keine Anrufe)" />
+        <label className="flex items-center gap-2 text-sm">Erinnern <input name="lead" type="number" min={5} max={1440} defaultValue={cfg.eventLeadMin} className="field w-20 py-1" /> Min. vorher</label>
+        <Submit>Speichern</Submit>
+      </form>
+      {cfg.callUser && (
+        <button type="button" disabled={pending} className="btn btn-secondary" onClick={() => start(async () => setTest(await testCallAction()))}>
+          {pending ? 'Rufe an …' : 'Testanruf'}
+        </button>
+      )}
+      <ErrorNote error={state?.error ?? test?.error} /><OkNote message={state?.ok ?? test?.ok} />
+    </div>
   );
 }
 

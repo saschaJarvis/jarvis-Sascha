@@ -21,9 +21,9 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
   const deletion = await db(s).run((q) => q<{ execute_after: Date }>('select execute_after from deletion_requests where cancelled_at is null and executed_at is null limit 1'));
   const ai = await db(s).run(async (q) => (await q<{ ok: boolean }>('select app.has_consent(auth.uid(), $1) as ok', [AI_CONSENT]))[0].ok);
   const paused = profile.paused_until && new Date(profile.paused_until) > new Date();
-  const [al] = await db(s).run((q) => q<{ kinds: Record<string, boolean> | null; pct: string; opct: string; push_enabled: boolean; devices: number; bot: string | null; linked: boolean; code: string | null }>(
+  const [al] = await db(s).run((q) => q<{ kinds: Record<string, boolean> | null; pct: string; opct: string; push_enabled: boolean; devices: number; bot: string | null; linked: boolean; code: string | null; call_user: string | null; lead: number }>(
     `select a.kinds, a.price_threshold_pct::text pct, a.other_threshold_pct::text opct, a.push_enabled, (select count(*)::int from push_subscriptions) devices,
-            a.telegram_bot_name bot, a.telegram_chat_id is not null linked, a.telegram_link_code code
+            a.telegram_bot_name bot, a.telegram_chat_id is not null linked, a.telegram_link_code code, a.call_user, a.event_lead_min lead
        from alert_settings a where a.user_id = auth.uid()`));
   const tts = ttsAvailable();
   const [voiceList, q, [vs], tokens, h] = await Promise.all([
@@ -42,7 +42,7 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
     tokens: tokens.map((t) => ({ id: t.id, label: t.label, created: dfmt(t.created_at), lastUsed: t.last_used_at ? dfmt(t.last_used_at) : null })),
     baseUrl: `https://${h.get('x-forwarded-host') ?? h.get('host') ?? 'jarvis-sascha.vercel.app'}`,
   };
-  const kinds = { outflow: true, inflow: true, price: true, statement: true, other: true, bill: true, sport: true, ...(al?.kinds ?? {}) };
+  const kinds = { outflow: true, inflow: true, price: true, statement: true, other: true, bill: true, sport: true, event: true, ...(al?.kinds ?? {}) };
 
   return (
     <div>
@@ -59,7 +59,7 @@ export default async function SettingsPage({ searchParams }: { searchParams: Pro
         <Section title="Warnungen">
           <AlertSettings cfg={{
             kinds, pct: al ? Number(al.pct) : 10, otherPct: al ? Number(al.opct) : 5, pushEnabled: !!al?.push_enabled && (al?.devices ?? 0) > 0, pushDevices: al?.devices ?? 0,
-            telegramBot: al?.bot ?? null, telegramLinked: !!al?.linked, telegramCode: al?.code ?? null,
+            telegramBot: al?.bot ?? null, telegramLinked: !!al?.linked, telegramCode: al?.code ?? null, callUser: al?.call_user ?? null, eventLeadMin: al?.lead ?? 60,
             vapidKey: process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY ?? null,
           }} />
         </Section>

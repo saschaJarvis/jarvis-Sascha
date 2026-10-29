@@ -14,7 +14,9 @@ function vapid() {
   webpush.setVapidDetails(process.env.VAPID_SUBJECT || 'mailto:jarvis@example.invalid', process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY!, process.env.VAPID_PRIVATE_KEY!);
 }
 
-export interface AlertInput { kind: 'outflow' | 'inflow' | 'price' | 'statement' | 'bill' | 'sport' | 'test'; severity?: 'info' | 'warn' | 'critical'; title: string; body: string; url?: string; dedupKey: string }
+export interface AlertInput { kind: 'outflow' | 'inflow' | 'price' | 'statement' | 'bill' | 'sport' | 'event' | 'test'; severity?: 'info' | 'warn' | 'critical'; title: string; body: string; url?: string; dedupKey: string;
+  /** auch in der Ruhezeit sofort (Pause/Notaus gelten weiter) */ ignoreQuiet?: boolean;
+  /** zusätzlich anrufen (Telegram-Anruf über CallMeBot) und diesen Text vorlesen */ callText?: string }
 
 /** Warnung anlegen (einmalig je dedupKey). Ruhezeiten: nicht-kritische Warnungen warten bis zum Ende. */
 export async function queueAlert(userId: string, a: AlertInput): Promise<boolean> {
@@ -22,6 +24,7 @@ export async function queueAlert(userId: string, a: AlertInput): Promise<boolean
     const [p] = await q<{ timezone: string; qs: string | null; qe: string | null; paused: boolean; kill: boolean }>(
       `select timezone, quiet_hours_start::text qs, quiet_hours_end::text qe, coalesce(paused_until > now(), false) paused, kill_switch kill from profiles where id = $1`, [userId]);
     const critical = a.severity === 'critical';
+    const immediate = critical || !!a.ignoreQuiet;
     // Ende der Ruhezeit in der Zeitzone des Nutzers berechnen (in SQL – zuverlässiger als im Server)
     const [t] = await q<{ send_after: Date }>(`
       with now_local as (select (now() at time zone $1) as l)
@@ -31,10 +34,10 @@ export async function queueAlert(userId: string, a: AlertInput): Promise<boolean
         when $2::time > $3::time and (l::time >= $2::time) then (((l::date + 1) + $3::time) at time zone $1)
         when $2::time > $3::time and (l::time < $3::time) then ((l::date + $3::time) at time zone $1)
         else now() end as send_after
-      from now_local`, [p?.timezone ?? 'Asia/Dubai', p?.qs ?? null, p?.qe ?? null, critical]);
-    const rows = await q(`insert into alerts (user_id, kind, severity, title, body, url, dedup_key, send_after)
-        values ($1, $2, $3, $4, $5, $6, $7, $8) on conflict (user_id, dedup_key) do nothing returning id`,
-      [userId, a.kind, a.severity ?? 'info', a.title.slice(0, 120), a.body.slice(0, 900), a.url ?? null, a.dedupKey.slice(0, 200), critical || !p ? new Date() : t.send_after]);
+      from now_local`, [p?.timezone ?? 'Asia/Dubai', p?.qs ?? null, p?.qe ?? null, immediate]);
+    const rows = await q(`insert into alerts (user_id, kind, severity, title, body, url, dedup_key, send_after, call_text)
+        values ($1, $2, $3, $4, $5, $6, $7, $8, $9) on conflict (user_id, dedup_key) do nothing returning id`,
+      [userId, a.kind, a.severity ?? 'info', a.title.slice(0, 120), a.body.slice(0, 900), a.url ?? null, a.dedupKey.slice(0, 200), immediate || !p ? new Date() : t.send_after, a.callText?.slice(0, 256) ?? null]);
     return rows.length > 0;
   });
 }
@@ -47,10 +50,20 @@ async function sendTelegram(token: string, chatId: number | string, text: string
   if (!r.ok) throw new Error(`Telegram HTTP ${r.status}`);
 }
 
+/** Telegram-Anruf mit Sprachansage über CallMeBot (kostenlos, einmalig bei @CallMeBot_txtbot /start senden). */
+export async function placeCall(user: string, text: string): Promise<void> {
+  const u = new URL('https://api.callmebot.com/start.php');
+  u.search = new URLSearchParams({ source: 'jarvis', user, text: text.slice(0, 256), lang: 'de-DE-Standard-B', rpt: '2', cc: 'no' }).toString();
+  const r = await fetch(u, { cache: 'no-store', signal: AbortSignal.timeout(25000) });
+  const body = (await r.text().catch(() => '')).replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+  if (!r.ok) throw new Error(`Anruf HTTP ${r.status}`);
+  if (/error|not (authori[sz]ed|allowed)|denied|invalid/i.test(body)) throw new Error(`Anruf: ${body.slice(0, 140)}`);
+}
+
 /** Alle fälligen Warnungen verschicken (optional nur für einen Nutzer). */
 export async function dispatchAlerts(onlyUser?: string): Promise<{ sent: number; failed: number }> {
-  const due = await withService((q) => q<{ id: string; user_id: string; title: string; body: string; url: string | null; severity: string }>(
-    `select a.id, a.user_id, a.title, a.body, a.url, a.severity from alerts a
+  const due = await withService((q) => q<{ id: string; user_id: string; title: string; body: string; url: string | null; severity: string; kind: string; call_text: string | null }>(
+    `select a.id, a.user_id, a.title, a.body, a.url, a.severity, a.kind, a.call_text from alerts a
        join profiles p on p.id = a.user_id
       where a.sent_at is null and a.send_after <= now() and a.created_at > now() - interval '2 days'
         and ($1::uuid is null or a.user_id = $1) and not coalesce(p.kill_switch, false)
@@ -59,19 +72,19 @@ export async function dispatchAlerts(onlyUser?: string): Promise<{ sent: number;
   let sent = 0, failed = 0;
   for (const a of due) {
     const [cfg, subs] = await withService(async (q) => [
-      (await q<{ push_enabled: boolean; telegram_bot_token: string | null; telegram_chat_id: string | null }>('select push_enabled, telegram_bot_token, telegram_chat_id::text from alert_settings where user_id = $1', [a.user_id]))[0],
+      (await q<{ push_enabled: boolean; telegram_bot_token: string | null; telegram_chat_id: string | null; call_user: string | null }>('select push_enabled, telegram_bot_token, telegram_chat_id::text, call_user from alert_settings where user_id = $1', [a.user_id]))[0],
       await q<{ id: string; endpoint: string; p256dh: string; auth: string }>('select id, endpoint, p256dh, auth from push_subscriptions where user_id = $1', [a.user_id]),
     ] as const);
-    let pushOk: boolean | null = null, tgOk: boolean | null = null;
+    let pushOk: boolean | null = null, tgOk: boolean | null = null, callOk: boolean | null = null;
     const errors: string[] = [];
-    const icon = a.severity === 'critical' ? '🚨' : a.severity === 'warn' ? '⚠️' : 'ℹ️';
+    const icon = a.kind === 'event' ? '' : a.severity === 'critical' ? '🚨' : a.severity === 'warn' ? '⚠️' : 'ℹ️';
     if (cfg?.push_enabled && subs.length && pushConfigured()) {
       vapid();
       pushOk = false;
       for (const s of subs) {
         try {
           await webpush.sendNotification({ endpoint: s.endpoint, keys: { p256dh: s.p256dh, auth: s.auth } },
-            JSON.stringify({ title: `${icon} ${a.title}`, body: a.body, url: a.url ?? '/' }), { TTL: 3600, urgency: a.severity === 'critical' ? 'high' : 'normal' });
+            JSON.stringify({ title: `${icon} ${a.title}`.trim(), body: a.body, url: a.url ?? '/' }), { TTL: 3600, urgency: a.severity === 'critical' ? 'high' : 'normal' });
           pushOk = true;
           await withService((q) => q('update push_subscriptions set last_ok_at = now() where id = $1', [s.id]));
         } catch (e) {
@@ -82,12 +95,16 @@ export async function dispatchAlerts(onlyUser?: string): Promise<{ sent: number;
       }
     }
     if (cfg?.telegram_bot_token && cfg.telegram_chat_id) {
-      try { await sendTelegram(cfg.telegram_bot_token, cfg.telegram_chat_id, `${icon} ${a.title}\n\n${a.body}`); tgOk = true; }
+      try { await sendTelegram(cfg.telegram_bot_token, cfg.telegram_chat_id, `${icon} ${a.title}`.trim() + `\n\n${a.body}`); tgOk = true; }
       catch (e) { tgOk = false; errors.push((e as Error).message); }
     }
-    const ok = pushOk || tgOk;
-    await withService((q) => q('update alerts set sent_at = now(), push_ok = $2, telegram_ok = $3, error = $4 where id = $1',
-      [a.id, pushOk, tgOk, errors.length ? errors.join('; ').slice(0, 300) : ok === null ? 'kein Kanal eingerichtet' : null]));
+    if (a.call_text && cfg?.call_user) {
+      try { await placeCall(cfg.call_user, a.call_text); callOk = true; }
+      catch (e) { callOk = false; errors.push((e as Error).message); }
+    }
+    const ok = pushOk || tgOk || callOk;
+    await withService((q) => q('update alerts set sent_at = now(), push_ok = $2, telegram_ok = $3, call_ok = $5, error = $4 where id = $1',
+      [a.id, pushOk, tgOk, errors.length ? errors.join('; ').slice(0, 300) : ok === null ? 'kein Kanal eingerichtet' : null, callOk]));
     if (ok) sent++; else failed++;
   }
   return { sent, failed };
