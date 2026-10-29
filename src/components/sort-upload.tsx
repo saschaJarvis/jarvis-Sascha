@@ -8,7 +8,7 @@ const FOLDER_OPTIONS: Array<[string, string]> = [
   ['identity', 'Ausweise'], ['visa', 'Visum'], ['uae_property', 'Dubai-Wohnung'], ['housing', 'Wohnung'], ['office', 'Büro'],
   ['storage', 'Lager'], ['business', 'Firma'], ['taxes', 'Steuern'], ['banks', 'Banken'], ['insurance', 'Versicherungen'],
   ['subscriptions', 'Abos'], ['shipping', 'Versand/Umzug'], ['customs', 'Zoll'], ['utilities', 'Strom/Wasser'],
-  ['healthcare', 'Gesundheit'], ['vehicles', 'Fahrzeuge'], ['travel', 'Reisen'], ['legal', 'Rechtliches'], ['crypto', 'Krypto'], ['other', 'Sonstiges'],
+  ['healthcare', 'Gesundheit'], ['vehicles', 'Fahrzeuge'], ['travel', 'Reisen'], ['legal', 'Rechtliches'], ['crypto', 'Krypto'], ['manuals', 'Bedienungsanleitungen'], ['other', 'Sonstiges'],
 ];
 
 /** Großer Knopf: Datei(en) wählen oder fotografieren → Jarvis/Claude liest, benennt, sortiert, schlägt Aufgaben vor. */

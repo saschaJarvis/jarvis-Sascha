@@ -3,6 +3,7 @@ import { PageTitle } from '@/components/ui';
 
 const modules: Array<{ href: string; title: string; desc: string; ready: boolean }> = [
   { href: '/leben/dokumente', title: 'Dokumente', desc: 'Sicher ablegen, Nachweise, Ablaufdaten', ready: true },
+  { href: '/leben/dokumente?ordner=manuals', title: 'Bedienungsanleitungen', desc: 'Handbücher und Anleitungen deiner Geräte', ready: true },
   { href: '/leben/vertraege', title: 'Verträge & Kündigungen', desc: 'Fristen, Entwürfe, Freigaben', ready: true },
   { href: '/leben/dubai', title: 'Dubai', desc: 'Umzug und Wohnung', ready: true },
   { href: '/leben/finanzen', title: 'Finanzen', desc: 'Konten, Rechnungen, Prognose', ready: false },

@@ -112,7 +112,7 @@ export const DocAnalysis = z.object({
 });
 export type DocAnalysis = z.infer<typeof DocAnalysis>;
 
-const FOLDER_HELP = 'identity=Ausweis/Pass/Führerschein, housing=Wohnung Mainz (Miete, Nebenkosten), office=Büro, storage=Lagerraum, business=eigene Firma (Gewerbe, Handelsregister, Kunden), taxes=Steuern/Finanzamt/Steuerberater, banks=Bank/Konto/Kredit, crypto=Krypto, insurance=Versicherung, subscriptions=Abo/Mitgliedschaft/Telefon/Internet, shipping=Umzug/Container/Spedition, customs=Zoll, visa=Visum/Emirates ID/Aufenthalt, uae_property=Dubai-Wohnung (SPA, Oqood, Developer, Hypothek UAE), utilities=Strom/Wasser/Gas/DEWA, healthcare=Gesundheit/Arzt/Krankenkasse, vehicles=Fahrzeug, travel=Reise/Flug, legal=Rechtliches/Anwalt/Gericht, metals=Edelmetall-Rechnungen/-Zertifikate (Gold, Silber, Platin: Münzen, Barren; Händler wie Degussa, pro aurum, Heubach, Philoro, Goldsilbershop), other=passt nirgends';
+const FOLDER_HELP = 'identity=Ausweis/Pass/Führerschein, housing=Wohnung Mainz (Miete, Nebenkosten), office=Büro, storage=Lagerraum, business=eigene Firma (Gewerbe, Handelsregister, Kunden), taxes=Steuern/Finanzamt/Steuerberater, banks=Bank/Konto/Kredit, crypto=Krypto, insurance=Versicherung, subscriptions=Abo/Mitgliedschaft/Telefon/Internet, shipping=Umzug/Container/Spedition, customs=Zoll, visa=Visum/Emirates ID/Aufenthalt, uae_property=Dubai-Wohnung (SPA, Oqood, Developer, Hypothek UAE), utilities=Strom/Wasser/Gas/DEWA, healthcare=Gesundheit/Arzt/Krankenkasse, vehicles=Fahrzeug, travel=Reise/Flug, legal=Rechtliches/Anwalt/Gericht, metals=Edelmetall-Rechnungen/-Zertifikate (Gold, Silber, Platin: Münzen, Barren; Händler wie Degussa, pro aurum, Heubach, Philoro, Goldsilbershop), manuals=Bedienungsanleitung/Handbuch/Gebrauchsanweisung/Garantiekarte/Montageanleitung für Geräte und Produkte, other=passt nirgends';
 
 const SORT_TOOL: Tool = {
   name: 'ablegen',
@@ -209,6 +209,7 @@ export function guessFolderFromName(name: string): (typeof FOLDERS)[number] {
     [/lager|storage/, 'storage'],
     [/gewerbe|handelsreg|gmbh|firma|kunde/, 'business'],
     [/gold|silber|silver|platin|edelmetall|degussa|pro.?aurum|heubach|philoro|kr(ue|ü)gerrand|maple.?leaf|philharmoniker|feinunze/, 'metals'],
+    [/bedienungsanleitung|anleitung|handbuch|manual|gebrauchsanweisung|user.?guide|quick.?start/, 'manuals'],
     [/bank|konto|kontoauszug|sparkasse|volksbank|kredit/, 'banks'],
     [/versicher|insurance|allianz|huk/, 'insurance'],
     [/telekom|vodafone|o2|internet|handy|abo|netflix|spotify/, 'subscriptions'],
